@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "paper": { "title": "Sample JSON paper", "source_type": "coaching_test", "expected_total": 10 },
+  "questions": [
+    {
+      "number": 5,
+      "question": "The repo rate is the rate at which the",
+      "options": { "a": "RBI lends to commercial banks", "b": "commercial banks lend to the public", "c": "government borrows from the RBI", "d": "RBI borrows from commercial banks" },
+      "correct_answer": "a",
+      "explanation": null,
+      "subject": "Economy",
+      "topic": null,
+      "has_image": false,
+      "page": 3,
+      "uncertain": false
+    },
+    {
+      "number": 6,
+      "question": "Which gas is most abundant in the Earth's atmosphere?",
+      "options": { "a": "Oxygen", "b": "Carbon dioxide", "c": "Nitrogen", "d": "Argon" },
+      "correct_answer": "c",
+      "explanation": null,
+      "subject": "Geography",
+      "topic": null,
+      "has_image": false,
+      "page": 3,
+      "uncertain": false
+    },
+    {
+      "number": 7,
+      "question": "Study the map given below and identify the marked river. [IMAGE]",
+      "options": { "a": "Narmada", "b": "Tapti", "c": "Godavari", "d": "Krishna" },
+      "correct_answer": null,
+      "explanation": null,
+      "subject": "Geography",
+      "topic": null,
+      "has_image": true,
+      "page": 4,
+      "uncertain": false
+    },
+    {
+      "number": 8,
+      "question": "Which of the following is a Ramsar site in India?",
+      "options": { "a": "Chilika Lake", "b": "Dal Lake", "c": "Pushkar Lake", "d": "Sambhar Lake" },
+      "correct_answer": "a",
+      "explanation": null,
+      "subject": "Environment",
+      "topic": null,
+      "has_image": false,
+      "page": 4,
+      "uncertain": true
+    },
+    {
+      "number": 9,
+      "question": "GST was introduced in India through the",
+      "options": { "a": "97th Amendment", "b": "100th Amendment", "c": "101st Amendment", "d": "103rd Amendment" },
+      "correct_answer": "c",
+      "explanation": "The 101st Constitutional Amendment Act, 2016 introduced the Goods and Services Tax.",
+      "subject": "Polity",
+      "topic": null,
+      "has_image": false,
+      "page": 5,
+      "uncertain": false
+    },
+    {
+      "number": 10,
+      "question": "Who wrote the book 'Discovery of India'?",
+      "options": { "a": "Mahatma Gandhi", "b": "Jawaharlal Nehru", "c": "B. R. Ambedkar", "d": "Sardar Patel" },
+      "correct_answer": "b",
+      "explanation": null,
+      "subject": "Astronomy",
+      "topic": null,
+      "has_image": false,
+      "page": 5,
+      "uncertain": false
+    }
+  ]
+}
+Covered questions 5 to 10.

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Question{% endblock %}
+{% block content %}
+  {% from "_lang.html" import question_text, option_text, explanation, toggle %}
+  {% set lang = user_language(request) %}
+  <div class="lang-scope" data-lang="{{ lang }}">
+  <p class="paper-meta"><a href="/revision">← Revision</a> · <a href="/bookmarks">Bookmarks</a></p>
+  {% if lang != "en" or lang_modes(question).has_hi %}<p>{{ toggle(lang, "/questions/" ~ question.id) }}</p>{% endif %}
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  <div class="q-card practice-card">
+    {{ question_text(question) }}
+
+    {% if question.has_image and question.source_image_path %}
+      <div class="q-snapshot">
+        <img src="/media/{{ question.paper_id }}/{{ question.source_image_path }}" alt="The question as printed">
+      </div>
+    {% endif %}
+
+    {% if reveal %}
+      <ul class="opt-list">
+        {% for letter, text in options %}
+          <li class="opt static {{ 'correct' if letter == question.correct_answer }}">
+            <span class="opt-letter">{{ letter }}</span>
+            {{ option_text(question, letter) }}
+            {% if letter == question.correct_answer %}<span class="opt-tag">Correct answer</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+
+      {% if question.explanation or question.explanation_hi %}{{ explanation(question, explanation_label, expl_label_hi(question)) }}{% endif %}
+
+      {% if item %}
+        <div class="reason-box">
+          <div class="paper-meta">Revision schedule</div>
+          {% if item.status == "done" %}
+            <div><span class="chip state-mastered">Mastered</span> You got this right twice in a row, so it has left your schedule.</div>
+          {% else %}
+            {% set days = (item.due_date - today).days %}
+            <div>
+              <span class="chip {{ 'state-due' if days <= 0 else 'state-scheduled' }}">
+                {% if days <= 0 %}Due now{% else %}Next review in {{ days }} day{{ "s" if days != 1 else "" }}{% endif %}
+              </span>
+              <span class="paper-meta">{{ item.correct_streak }} of 2 clean right answers in a row at reviews.</span>
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="notice">
+        {% if locked %}
+          This question is in a timed test you're still sitting, so its answer stays hidden until you finish the test.
+        {% else %}
+          The answer will show here once you've answered this question in practice or finished a test that included it.
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% if reveal %}
+      {% set page_url = "/questions/" ~ question.id %}
+      {% include "_report_form.html" %}
+    {% endif %}
+
+    <div class="keep-box">
+      <form method="post" action="/questions/{{ question.id }}/bookmark" class="inline-form">
+        <input type="hidden" name="on" value="{{ '0' if bookmarked else '1' }}">
+        <button type="submit" class="secondary">{{ "★ Bookmarked — remove" if bookmarked else "☆ Bookmark this question" }}</button>
+      </form>
+      <form method="post" action="/questions/{{ question.id }}/note" class="note-form">
+        <label for="note-text">Your private note</label>
+        <textarea id="note-text" name="text" maxlength="{{ max_note }}" placeholder="Anything worth remembering about this one">{{ note_text }}</textarea>
+        <button type="submit" class="secondary">Save note</button>
+      </form>
+    </div>
+  </div>
+
+  {% if reveal and history %}
+    <h2>Your answers</h2>
+    <ul class="result-list">
+      {% for r, a in history %}
+        <li class="result-row">
+          <span class="pal {{ 'correct' if r.is_correct else 'wrong' }}">{{ "✓" if r.is_correct else "✗" }}</span>
+          <span class="result-text">
+            {{ kind_labels.get(a.kind, a.kind) }} · {{ a.started_at.strftime("%d %b %Y") }} · you chose {{ r.selected_answer }}
+            {% if r.confidence.value != "skipped" %}({{ confidence_labels[r.confidence.value] }}){% endif %}
+            {% if r.is_correct is false and r.mistake_reason.value != "unset" %}
+              <span class="chip small">{{ reason_labels[r.mistake_reason] }}</span>
+            {% endif %}
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+  </div>
+  <script src="/static/lang.js"></script>
+{% endblock %}

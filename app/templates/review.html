@@ -1,0 +1,454 @@
+{% extends "base.html" %}
+{% block title %}Review — {{ paper.title }}{% endblock %}
+{% block content %}
+  {% if paper.status == "processing" %}
+    <meta http-equiv="refresh" content="3">
+  {% endif %}
+
+  <h1>{{ paper.title }}</h1>
+  <p class="paper-meta">
+    {% if paper.source_type %}{{ {"official_pyq": "Official PYQ", "coaching_test": "Coaching test"}[paper.source_type] }}{% endif %}
+    {% if paper.source_name %}· {{ paper.source_name }}{% endif %}
+    {% if paper.test_name or paper.test_number %}· {{ paper.test_name or "" }} {{ paper.test_number or "" }}{% endif %}
+    {% if paper.series %}· Series {{ paper.series }}{% endif %}
+    {% if paper.marks_per_question %}· {{ paper.marks_per_question }} marks each{% endif %}
+    {% if paper.negative_fraction %}· −{{ (paper.negative_fraction * 100)|round(1)|string|replace(".0", "") }}% for a wrong answer{% endif %}
+    {% if paper.archived_at %}· <span class="flag">Archived</span>{% endif %}
+  </p>
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  {% if paper.status == "processing" %}
+    <div class="notice">
+      Reading questions from the PDF…
+      {% if paper.pages_total %}page {{ paper.pages_done }} of {{ paper.pages_total }}{% else %}starting{% endif %}.
+      This page refreshes by itself.
+    </div>
+
+  {% elif paper.status == "failed" %}
+    <div class="error">
+      Reading this paper failed.<br>
+      <code>{{ paper.status_message }}</code>
+    </div>
+    <form method="post" action="/papers/{{ paper.id }}/archive"
+          onsubmit="return confirm('Archive this paper? Its files and history are kept.');">
+      <button type="submit" class="secondary">Archive this paper and try again</button>
+    </form>
+
+  {% else %}
+    {% if paper.status_message %}
+      <div class="error" style="white-space:pre-line">{{ paper.status_message }}</div>
+    {% endif %}
+
+    {% if counts.ai %}
+      <div class="notice">
+        <strong>AI-supplied, unverified.</strong> {{ counts.ai }} question{{ "s were" if counts.ai != 1 else " was" }} imported from JSON
+        written by another AI. Check each against the real paper — especially the answers, which are never confirmed in bulk.
+        Students can't see any of them until you confirm them and publish.
+      </div>
+    {% endif %}
+
+    {% if counts.total %}
+      {% set reviewed_pct = (100 * (counts.total - counts.to_confirm) / counts.total)|round|int %}
+      <div class="review-progress">
+        <div class="progress thin" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ reviewed_pct }}" aria-label="Review progress">
+          <div class="progress-bar {{ "done" if reviewed_pct == 100 }}" style="width: {{ reviewed_pct }}%"></div>
+        </div>
+      </div>
+    {% endif %}
+    <p class="paper-meta">
+      {{ counts.total }} question{{ "s" if counts.total != 1 else "" }}
+      {% if paper.expected_total %}(expected {{ paper.expected_total }}){% endif %} ·
+      {{ counts.to_confirm }} still to confirm ·
+      {{ counts.flagged }} with warnings ·
+      {{ counts.no_subject }} without a subject
+      {% if counts.both or counts.hindi_only %}· {{ counts.both }} in English and Hindi{% if counts.hindi_only %}, {{ counts.hindi_only }} Hindi only{% endif %}{% endif %}
+      {% if counts.quarantined %}· <a href="/quarantine?paper_id={{ paper.id }}">{{ counts.quarantined }} in quarantine</a>{% endif %}.
+      Compare each question with its printed snapshot, then confirm it.
+    </p>
+
+    <div class="{{ 'warnings' if extraction.missing or extraction.beyond else 'notice' }} extraction-box">
+      <strong>Extracted {{ extraction.found }} of {{ extraction.of or "?" }}</strong>{% if not extraction.expected and extraction.of %} <span class="paper-meta">(highest number seen; set “Expected questions” below for an exact check)</span>{% endif %}
+      {% if extraction.missing %}
+        — missing: {{ extraction.missing[:40]|join(", ") }}{% if extraction.missing|length > 40 %} … and {{ extraction.missing|length - 40 }} more{% endif %}.
+      {% elif extraction.of %}— none missing.{% endif %}
+      {% if extraction.beyond %}Also numbered beyond the expected total: {{ extraction.beyond[:20]|join(", ") }}.{% endif %}
+      {% if paper.pages_total and paper.source_pdf_path %}
+        <form method="post" action="/review/{{ paper.id }}/rerun" class="inline-form rerun-form"
+              onsubmit="return confirm('Read these pages again? Confirmed and edited questions are left alone; questions still waiting for review on those pages are replaced by the new reading.');">
+          <label class="paper-meta">Read pages again</label>
+          <input type="number" name="first_page" min="1" max="{{ paper.pages_total }}" placeholder="from" required style="width:5.5em">
+          <input type="number" name="last_page" min="1" max="{{ paper.pages_total }}" placeholder="to" style="width:5.5em">
+          <button type="submit" class="secondary">Re-run pages</button>
+          <span class="paper-meta">of {{ paper.pages_total }}. Confirmed or edited questions are never touched.</span>
+        </form>
+      {% endif %}
+    </div>
+
+    {% if dup_counts %}
+      <div class="warnings extraction-box">
+        <strong>{{ dup_counts|length }} question{{ "s" if dup_counts|length != 1 else "" }} in this paper may duplicate another.</strong>
+        <a href="/admin/duplicates?paper_id={{ paper.id }}">Review the duplicates</a> — keep both, or merge one into the other.
+      </div>
+    {% endif %}
+
+    <div class="tool-box audit-box">
+      <div>
+        <strong>Sample audit:</strong>
+        {% if audit.state == "pending" %}in progress
+        {% elif audit.state == "passed" %}passed{% elif audit.state == "failed" %}<span class="flag">failed</span>
+        {% else %}not run{% endif %}
+        <span class="paper-meta">· {{ audit.pool }} question{{ "s" if audit.pool != 1 else "" }} confirmed without an edit{% if audit.state == "none" and audit.pool >= audit.min %} — an audit is needed before publishing{% endif %}</span>
+      </div>
+      <a href="/review/{{ paper.id }}/audit" class="btn-link secondary-link">{{ "Continue audit" if audit.state == "pending" else "Sample audit" }}</a>
+    </div>
+    <div class="tool-box audit-box">
+      <div><strong>Duplicates:</strong> <span class="paper-meta">{{ dup_counts|length }} question{{ "s" if dup_counts|length != 1 else "" }} here may match another in this or another paper</span></div>
+      <a href="/admin/duplicates?paper_id={{ paper.id }}" class="btn-link secondary-link">Duplicates</a>
+    </div>
+
+    <div class="review-bar"><div class="toolbar">
+      <span>
+        Show:
+        <a href="?show=all" class="{{ 'on' if show == 'all' }}">All</a> ·
+        <a href="?show=to_confirm" class="{{ 'on' if show == 'to_confirm' }}">To confirm ({{ counts.to_confirm }})</a>
+        {% if show == "to_confirm" %}<span class="paper-meta">({{ "in question order" if sort == "number" else "warnings first" }} — <a href="?show=to_confirm{{ '' if sort == 'number' else '&sort=number' }}">{{ "warnings first" if sort == "number" else "question order" }}</a>)</span>{% endif %} ·
+        <a href="?show=confirmed" class="{{ 'on' if show == 'confirmed' }}">Confirmed ({{ counts.verified }})</a> ·
+        <a href="?show=flagged" class="{{ 'on' if show == 'flagged' }}">With warnings</a> ·
+        <a href="?show=no_subject" class="{{ 'on' if show == 'no_subject' }}">No subject ({{ counts.no_subject }})</a>
+      </span>
+
+      {% if counts.verified %}
+        <form method="post" action="/review/{{ paper.id }}/reopen-all"
+              onsubmit="return confirm('Send all {{ counts.verified }} confirmed questions back to review? Students stop seeing them until you confirm them again.');">
+          <button type="submit" class="secondary">Review again: send all {{ counts.verified }} confirmed back</button>
+        </form>
+      {% endif %}
+
+      {% if counts.clean %}
+        <form method="post" action="/review/{{ paper.id }}/confirm-clean"
+              onsubmit="return confirm('Confirm the {{ counts.clean }} questions that have an answer and no warnings, without checking each one?');">
+          <button type="submit" class="secondary">Confirm all {{ counts.clean }} without warnings</button>
+        </form>
+      {% endif %}
+    </div></div>
+
+    <div class="tool-box publish-box">
+      {% if paper.publish_status == "published" %}
+        <strong>Published</strong> — {{ live_count }} question{{ "s" if live_count != 1 else "" }} live for students.
+      {% else %}
+        <strong>Not published</strong> — students can't see this paper.
+      {% endif %}
+      {% if held_back %}
+        <div class="paper-meta">{{ held_back }} verified question{{ "s" if held_back != 1 else "" }} depend on an image without a page snapshot and won't go live.</div>
+      {% endif %}
+      {% if blockers %}
+        <ul class="warnings">
+          {% for message in blockers.values() %}<li>{{ message }}</li>{% endfor %}
+        </ul>
+      {% endif %}
+      <div class="row" style="gap:8px; margin-top:8px">
+        <form method="post" action="/papers/{{ paper.id }}/publish"
+              onsubmit="return confirm('Publish this paper? Its verified questions become visible to students.');">
+          <button type="submit" {% if blockers %}disabled title="Fix the problems listed first"{% endif %}>
+            {{ "Publish again (add newly verified questions)" if paper.publish_status == "published" else "Publish paper" }}
+          </button>
+        </form>
+        {% if paper.publish_status == "published" %}
+          <form method="post" action="/papers/{{ paper.id }}/unpublish"
+                onsubmit="return confirm('Unpublish this paper? Students lose access; nothing is deleted.');">
+            <button type="submit" class="secondary">Unpublish</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="tool-box key-box">
+      <div>
+        <strong>Answers:</strong> {{ key_summary.with_answer }} of {{ key_summary.total }} question{{ "s" if key_summary.total != 1 else "" }} have one
+        {% if key_summary.sources %}<span class="paper-meta">({% for label, n in key_summary.sources %}{{ n }} from {{ label }}{{ ", " if not loop.last }}{% endfor %})</span>{% endif %}
+        {% if key_summary.key_source %}<div class="paper-meta">Key source: {{ key_summary.key_source }}{% if key_summary.key_version %} · {{ key_summary.key_version }}{% endif %}</div>{% endif %}
+        {% if key_summary.spread %}<div class="warnings">{{ key_summary.spread.share }}% of the answers are “{{ key_summary.spread.letter }}” — that's unusual.</div>{% endif %}
+        {% if key_summary.mismatches %}<div class="warnings">{{ key_summary.mismatches|length }} question{{ "s" if key_summary.mismatches|length != 1 else "" }} whose explanation states a different answer from the key ({{ key_summary.mismatches[:8]|join(", ") }}{% if key_summary.mismatches|length > 8 %} …{% endif %}).</div>{% endif %}
+      </div>
+      <a href="/review/{{ paper.id }}/key" class="btn-link secondary-link">Answer key</a>
+    </div>
+
+    <details class="tool-box">
+      <summary>
+        Marking scheme and time
+        {% if paper.marks_per_question and paper.negative_fraction is not none %}
+          — {{ paper.marks_per_question }} marks, −{{ paper.negative_fraction|round(4) }} of that per wrong answer{% if paper.duration_minutes %}, {{ paper.duration_minutes }} min{% endif %}
+        {% else %}
+          — <strong>not set: full-length tests are unavailable until it is</strong>
+        {% endif %}
+      </summary>
+      <form method="post" action="/papers/{{ paper.id }}/settings">
+        <div class="row wrap">
+          <div>
+            <label>Expected questions</label>
+            <input type="number" name="expected_total" min="1" value="{{ paper.expected_total or '' }}">
+          </div>
+          <div>
+            <label>Marks per question</label>
+            <input type="text" name="marks_per_question" value="{{ paper.marks_per_question if paper.marks_per_question is not none else '' }}" placeholder="2">
+          </div>
+          <div>
+            <label>Negative marking</label>
+            <input type="text" name="negative_fraction" value="{{ paper.negative_fraction if paper.negative_fraction is not none else '' }}" placeholder="1/3">
+          </div>
+          <div>
+            <label>Time allowed (minutes)</label>
+            <input type="number" name="duration_minutes" min="1" max="600" value="{{ paper.duration_minutes or '' }}" placeholder="120">
+          </div>
+        </div>
+        <div class="paper-meta">Negative marking is the fraction of a question's marks lost for a wrong answer (1/3 or 0.3333). Tests already started keep the marking they began with.</div>
+        <button type="submit" class="secondary">Save</button>
+      </form>
+    </details>
+
+    <details class="tool-box" {% if counts.no_subject and counts.no_subject == counts.total %}open{% endif %}>
+      <summary>Subjects: by question number, saved templates, suggestions
+        <span class="paper-meta">— {{ counts.no_subject }} of {{ counts.total }} without a subject{% if counts.suggested %}, {{ counts.suggested }} with a suggestion{% endif %}</span></summary>
+      <form method="post" action="/review/{{ paper.id }}/subjects">
+        <label>Subjects by question number</label>
+        <input type="text" name="subject_ranges" placeholder="1-30 History, 31-60 Geography, 61-90 Polity">
+        {% if saved_templates %}
+          <label>…or apply a saved template{% if paper.series %} <span class="paper-meta">(series {{ paper.series }} and any-series ones)</span>{% endif %}</label>
+          <select name="template_id">
+            <option value="">— none —</option>
+            {% for t in saved_templates %}<option value="{{ t.id }}">{{ t.name }}{% if t.series %} (series {{ t.series }}){% endif %}: {{ t.ranges_text }}</option>{% endfor %}
+          </select>
+        {% endif %}
+        <div class="row wrap">
+          <div><label>Save these ranges as a template (optional)</label><input type="text" name="save_name" placeholder="e.g. Prelims GS Paper 1"></div>
+          <div><label>For series</label>
+            <select name="save_series"><option value="">any series</option>
+              {% for s in ["A", "B", "C", "D"] %}<option value="{{ s }}" {% if paper.series == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
+        </div>
+        <div class="paper-meta">Subjects: {{ subjects|map(attribute="name")|join(", ") }}. Typed ranges win over a template; later ranges win over earlier ones. Every change is kept in the question's history.</div>
+        <button type="submit" class="secondary">Apply</button>
+      </form>
+      {% if saved_templates %}
+        <ul class="template-list">
+          {% for t in saved_templates %}
+            <li><span><strong>{{ t.name }}</strong> {% if t.series %}(series {{ t.series }}){% else %}(any series){% endif %} — {{ t.ranges_text }}</span>
+              <form method="post" action="/review/{{ paper.id }}/subject-templates/{{ t.id }}/delete" class="inline-form"
+                    onsubmit="return confirm('Delete this template? Questions already given subjects keep them.');">
+                <button type="submit" class="secondary">Delete</button></form></li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      <div class="row" style="gap:8px; margin-top:12px; align-items:center">
+        <form method="post" action="/review/{{ paper.id }}/suggest-subjects" class="inline-form">
+          <button type="submit" class="secondary">Suggest subjects from keywords</button></form>
+        {% if counts.suggested %}
+          <form method="post" action="/review/{{ paper.id }}/accept-suggestions" class="inline-form"
+                onsubmit="return confirm('Give all {{ counts.suggested }} questions the subject suggested for them?');">
+            <button type="submit" class="secondary">Accept all {{ counts.suggested }} suggestions</button></form>
+        {% endif %}
+      </div>
+      <div class="paper-meta">Suggestions come from keywords in the question and are only hints: they sit beside the subject box and nothing changes until you accept one.</div>
+    </details>
+
+    {% if questions %}
+    <form method="post" action="/review/{{ paper.id }}/bulk-subject" id="bulk-form" class="tool-box bulk-bar">
+      <label class="check-line"><input type="checkbox" id="select-all"> Select all {{ questions|length }} shown</label>
+      <select name="subject_id" aria-label="Subject to assign">
+        <option value="">Subject…</option>
+        {% for s in subjects %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="secondary">Assign to ticked</button>
+      <button type="submit" class="secondary" formaction="/review/{{ paper.id }}/accept-suggestions">Accept suggestions for ticked</button>
+    </form>
+    <script>
+      (function () {
+        var all = document.getElementById("select-all");
+        if (all) all.addEventListener("change", function () {
+          document.querySelectorAll("input.pick").forEach(function (box) { box.checked = all.checked; });
+        });
+      })();
+    </script>
+    {% endif %}
+
+    {% for q in questions %}
+      {% set needs_confirm = q.status in to_confirm_statuses %}
+      <div class="q-card {{ 'needs-review' if needs_confirm else 'reviewed' }}" id="q{{ q.question_number }}">
+        <div class="q-num">
+          <input type="checkbox" class="pick" name="question_ids" value="{{ q.id }}" form="bulk-form" aria-label="Select Q{{ q.question_number }}">
+          Q{{ q.question_number or loop.index }}
+          {% if needs_confirm %}<span class="flag">Needs review</span>
+          {% elif q.status == "live" %}<span class="flag ok">Live</span>
+          {% else %}<span class="flag ok">Verified</span>{% endif %}
+          {% if q.source == "ai_json" %}<span class="flag">AI-supplied</span>{% endif %}
+          {% if dup_counts.get(q.id) %}<a class="flag" href="/admin/duplicates?paper_id={{ paper.id }}" title="Possible duplicate">Possible duplicate</a>{% endif %}
+          {% if sources.get(q.id) %}<span class="paper-meta">Also appeared in: {% for s in sources[q.id] %}{{ s.label }}{{ ", " if not loop.last }}{% endfor %}</span>{% endif %}
+          {% if q.suggested_subject_id and not q.subject_id %}
+            <form method="post" action="/review/{{ paper.id }}/accept-suggestions" class="inline-form suggest-chip">
+              <input type="hidden" name="question_ids" value="{{ q.id }}">
+              <span class="paper-meta">Suggested subject:</span>
+              <button type="submit" class="secondary small" title="Give this question the suggested subject">Use {{ subject_names.get(q.suggested_subject_id, "?") }}</button>
+            </form>
+          {% endif %}
+          {% if version_counts.get(q.id) %}
+            <a class="history-link" href="/review/{{ paper.id }}/question/{{ q.id }}/history">History ({{ version_counts[q.id] }})</a>
+          {% endif %}
+        </div>
+
+        {% if q.ocr_flags %}
+          <ul class="warnings">
+            {% for f in q.ocr_flags.split(",") %}
+              <li>{{ flag_labels.get(f, f) }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+
+        {% set has_picture = q.source_image_path or (q.source == "ai_json" and q.page_number and q.page_number in page_pictures) %}
+        <div class="{{ 'review-split' if has_picture }}">
+        {% if has_picture %}<div class="review-picture">
+          {% if q.source == "ai_json" and q.page_number and q.page_number in page_pictures %}
+            <details class="q-snapshot" open>
+              <summary>Original page {{ q.page_number }} (from the attached PDF; only you can see this)</summary>
+              <img src="/media/{{ paper.id }}/page{{ q.page_number }}.jpg" alt="Original page {{ q.page_number }}" loading="lazy">
+            </details>
+          {% endif %}
+          {% if q.source_image_path %}
+            <div class="q-snapshot">
+              {% if q.page_number %}<div class="paper-meta">Printed page {{ q.page_number }}</div>{% endif %}
+              <img src="/media/{{ paper.id }}/{{ q.source_image_path }}" alt="Printed question {{ q.question_number }}" loading="lazy">
+            </div>
+          {% endif %}
+        </div>{% endif %}
+        <div class="review-form">
+        {% set has_hi = q.question_hi or q.option_a_hi or q.option_b_hi or q.option_c_hi or q.option_d_hi %}
+        {% set has_en = (q.text or "")|trim %}
+        <form method="post" action="/review/{{ paper.id }}/question/{{ q.id }}">
+          <div class="{{ 'lang-split' if has_en and has_hi }}">
+            {% if has_en or not has_hi %}
+              <div class="lang-col">
+                {% if has_hi %}<h4 class="lang-title">English</h4>{% endif %}
+                <div>
+                  <label>Question text</label>
+                  <textarea name="text">{{ q.text }}</textarea>
+                </div>
+                <div class="options-grid">
+                  <div><label>Option A</label><input type="text" name="option_a" value="{{ q.option_a }}"></div>
+                  <div><label>Option B</label><input type="text" name="option_b" value="{{ q.option_b }}"></div>
+                  <div><label>Option C</label><input type="text" name="option_c" value="{{ q.option_c }}"></div>
+                  <div><label>Option D</label><input type="text" name="option_d" value="{{ q.option_d }}"></div>
+                </div>
+              </div>
+            {% endif %}
+            {% if has_hi %}
+              <div class="lang-col">
+                <h4 class="lang-title">Hindi <span lang="hi">(हिन्दी)</span></h4>
+                {% if not has_en %}<div class="notice">No English version: this question was supplied in Hindi only.</div>{% endif %}
+                <div>
+                  <label>Question text (Hindi)</label>
+                  <textarea name="question_hi" lang="hi">{{ q.question_hi or "" }}</textarea>
+                </div>
+                <div class="options-grid">
+                  <div><label>Option A (Hindi)</label><input type="text" lang="hi" name="option_a_hi" value="{{ q.option_a_hi or '' }}"></div>
+                  <div><label>Option B (Hindi)</label><input type="text" lang="hi" name="option_b_hi" value="{{ q.option_b_hi or '' }}"></div>
+                  <div><label>Option C (Hindi)</label><input type="text" lang="hi" name="option_c_hi" value="{{ q.option_c_hi or '' }}"></div>
+                  <div><label>Option D (Hindi)</label><input type="text" lang="hi" name="option_d_hi" value="{{ q.option_d_hi or '' }}"></div>
+                </div>
+              </div>
+            {% endif %}
+          </div>
+          <div class="row">
+            <div>
+              <label>Correct answer {% if q.answer_source == "key_pdf" %}(from answer key){% elif q.answer_source == "json" %}(AI-supplied — check it){% endif %}</label>
+              <select name="correct_answer" required>
+                <option value="" {% if not q.correct_answer %}selected{% endif %}>Select…</option>
+                {% for letter in ["A", "B", "C", "D"] %}
+                  <option value="{{ letter }}" {% if q.correct_answer == letter %}selected{% endif %}>{{ letter }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label>Subject</label>
+              <select name="subject_id">
+                <option value="">—</option>
+                {% for s in subjects %}
+                  <option value="{{ s.id }}" {% if q.subject_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label>Topic {% if q.suggested_topic and not q.topic_id %}(suggested: {{ q.suggested_topic }}){% endif %}</label>
+              <input type="text" name="topic_name"
+                     value="{{ q.topic.name if q.topic else (q.suggested_topic or '') }}"
+                     placeholder="e.g. Fundamental Rights">
+            </div>
+            <div>
+              <label>Difficulty (optional)</label>
+              <select name="difficulty">
+                <option value="">—</option>
+                {% for d in ["easy", "medium", "hard", "tricky"] %}
+                  <option value="{{ d }}" {% if q.difficulty == d %}selected{% endif %}>{{ d|capitalize }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <label class="check-line">
+            <input type="checkbox" name="has_image" value="true" {% if q.has_image %}checked{% endif %}>
+            This question depends on an image, map or table (students will be shown the page snapshot)
+          </label>
+
+          {% if q.explanation %}
+            <details class="explanation">
+              <summary>Explanation {% if q.source == "ai_json" %}(AI-supplied{% else %}from the answer key ({% endif %}{{ ", " if q.source == "ai_json" }}{{ q.explanation_status or "unverified" }})</summary>
+              <div>{{ q.explanation }}</div>
+              <label class="check-line">
+                <input type="checkbox" name="explanation_verified" value="true" {% if q.explanation_status == "verified" %}checked{% endif %}>
+                I have checked this explanation (students will see it labelled “Verified”)
+              </label>
+            </details>
+          {% endif %}
+          {% if q.explanation_hi %}
+            <details class="explanation">
+              <summary>Hindi explanation (AI-supplied, {{ q.explanation_hi_status or "unverified" }})</summary>
+              <div lang="hi">{{ q.explanation_hi }}</div>
+              <label class="check-line">
+                <input type="checkbox" name="explanation_hi_verified" value="true" {% if q.explanation_hi_status == "verified" %}checked{% endif %}>
+                I have checked this Hindi explanation (students will see it labelled “Verified”)
+              </label>
+            </details>
+          {% endif %}
+
+          <button type="submit">
+            {% if needs_confirm %}Confirm question
+            {% elif q.status == "live" %}Save changes (a changed live question returns to review)
+            {% else %}Save changes{% endif %}
+          </button>
+        </form>
+
+        {% if not needs_confirm and q.status in ["verified", "live"] %}
+          <form method="post" action="/review/{{ paper.id }}/question/{{ q.id }}/reopen" class="inline-form"
+                onsubmit="return confirm('Send Q{{ q.question_number }} back to review?{% if q.status == "live" %} Students stop seeing it until you confirm it again.{% endif %}');">
+            <button type="submit" class="secondary">Review again</button>
+          </form>
+        {% endif %}
+
+        <form method="post" action="/review/{{ paper.id }}/question/{{ q.id }}/quarantine" class="quarantine-form"
+              onsubmit="return confirm('Quarantine Q{{ q.question_number }}? It stays in the database and can be restored.');">
+          <input type="text" name="reason" placeholder="Why is this question bad? (required)" required>
+          <button type="submit" class="secondary">Quarantine</button>
+        </form>
+        </div>
+        </div>
+      </div>
+    {% else %}
+      <p class="empty-state">No questions to show{% if show != "all" %} for this filter{% endif %}.</p>
+    {% endfor %}
+
+    <form method="post" action="/papers/{{ paper.id }}/{{ 'unarchive' if paper.archived_at else 'archive' }}" class="danger-zone"
+          onsubmit="return confirm('{{ 'Restore' if paper.archived_at else 'Archive' }} this paper? Nothing is deleted.');">
+      <button type="submit" class="secondary">{{ "Restore this paper" if paper.archived_at else "Archive this paper" }}</button>
+    </form>
+  {% endif %}
+{% endblock %}

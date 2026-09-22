@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Backups{% endblock %}
+{% block content %}
+  <div class="page-head"><div><h1>Backups</h1><p class="page-sub">Safety copies of the database.</p></div></div>
+  <p class="paper-meta">
+    A copy of the database is made automatically before every import (the newest {{ keep }} are kept).
+    Manual backups are never deleted by the app. Backups contain the database only — the uploaded PDFs
+    and page images live in the <code>data</code> folder, so copy that whole folder for a complete backup.
+  </p>
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  <form method="post" action="/admin/backups/create">
+    <button type="submit">Back up now</button>
+  </form>
+
+  <table class="user-table" style="margin-top:24px">
+    <tr><th>File</th><th>Type</th><th>Size</th><th>Made</th><th></th></tr>
+    {% for b in backups %}
+      <tr>
+        <td><code>{{ b.name }}</code></td>
+        <td class="paper-meta">{{ "automatic" if b.kind == "auto" else "manual" }}</td>
+        <td class="paper-meta">{{ (b.size / 1024)|round|int }} KB</td>
+        <td class="paper-meta">{{ b.created.strftime("%d %b %Y, %H:%M") }}</td>
+        <td><a href="/admin/backups/{{ b.name }}">Download</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty-state">No backups yet.</td></tr>
+    {% endfor %}
+  </table>
+{% endblock %}

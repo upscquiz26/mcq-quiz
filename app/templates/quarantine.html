@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Quarantine{% endblock %}
+{% block content %}
+  <div class="page-head"><div><h1>Quarantine</h1><p class="page-sub">Questions taken out of circulation — nothing here is deleted.</p></div></div>
+  <p class="paper-meta">
+    Questions taken out of circulation. Nothing here is deleted. Restoring a question sends it back to
+    review, and it has to be confirmed again before it can be used.
+    {% if paper_id %}<a href="/quarantine">Show all papers</a>{% endif %}
+  </p>
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  {% for q, paper in rows %}
+    <div class="q-card needs-review">
+      <div class="q-num">
+        <a href="/review/{{ paper.id }}">{{ paper.title }}</a> · Q{{ q.question_number }}
+        <span class="paper-meta">quarantined {{ q.quarantined_at.strftime("%d %b %Y, %H:%M") if q.quarantined_at else "" }} UTC</span>
+      </div>
+      <p><strong>Reason:</strong> {{ q.quarantine_reason }}</p>
+      {% if q.source_image_path %}
+        <div class="q-snapshot"><img src="/media/{{ paper.id }}/{{ q.source_image_path }}" alt="Printed question {{ q.question_number }}" loading="lazy"></div>
+      {% endif %}
+      <p class="paper-meta">{{ q.text or q.question_hi }}</p>
+      <form method="post" action="/quarantine/{{ q.id }}/restore">
+        <button type="submit">Restore to review</button>
+      </form>
+    </div>
+  {% else %}
+    <p class="empty-state">Nothing is in quarantine.</p>
+  {% endfor %}
+{% endblock %}

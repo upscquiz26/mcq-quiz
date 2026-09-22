@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}Your progress{% endblock %}
+{% block content %}
+  <h1>Your progress</h1>
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  {# One filter row above everything it scopes. #}
+  <p class="filter-row" id="range">
+    {% for key, label in ranges.items() %}
+      <a href="?range={{ key }}" class="{{ 'on' if range_key == key }}">{{ label }}</a>{{ " · " if not loop.last }}
+    {% endfor %}
+    <span class="paper-meta"> — applies to everything except “What official PYQs ask about”.</span>
+  </p>
+
+  {% if not overview.answered and not overview.tests_taken %}
+    <div class="empty-state">
+      Nothing to show{% if range_key != "all" %} in this period{% endif %} yet. Answer some questions in practice or take a
+      timed test, and your progress appears here.
+    </div>
+  {% else %}
+
+    {# ---------------- key numbers: stat tiles, not charts ---------------- #}
+    <div class="viz-stats">
+      <div class="viz-stat">
+        <div class="viz-stat-label">Timed tests taken</div>
+        <div class="viz-stat-value">{{ overview.tests_taken }}</div>
+      </div>
+      <div class="viz-stat">
+        <div class="viz-stat-label">Average test score</div>
+        <div class="viz-stat-value">{{ (overview.average_score|marks ~ "%") if overview.average_score is not none else "—" }}</div>
+        <div class="viz-stat-note">of the maximum marks</div>
+      </div>
+      <div class="viz-stat">
+        <div class="viz-stat-label">Accuracy</div>
+        <div class="viz-stat-value">{{ (overview.accuracy|string ~ "%") if overview.accuracy is not none else "—" }}</div>
+        <div class="viz-stat-note">
+          {% if overview.answered %}{{ overview.right }} of {{ overview.answered }} answers right{% else %}no answers in this period{% endif %}
+        </div>
+      </div>
+      <div class="viz-stat">
+        <div class="viz-stat-label">Average time per answer</div>
+        <div class="viz-stat-value">{{ overview.average_seconds|duration if overview.average_seconds is not none else "—" }}</div>
+      </div>
+    </div>
+
+    {# ---------------- score trend ---------------- #}
+    <h2 id="trend">Score trend</h2>
+    {% if trend_svg %}
+      <figure class="viz">
+        <figcaption class="viz-title">Score in each timed test <span class="paper-meta">(your last {{ points|length }})</span></figcaption>
+        {{ trend_svg }}
+        <details class="viz-table">
+          <summary>View as a table</summary>
+          <div class="table-wrap">
+            <table class="user-table">
+              <tr><th>Test</th><th>Date</th><th>Score</th><th>Out of</th><th>Percent</th></tr>
+              {% for p in points|reverse %}
+                <tr>
+                  <td><a href="/attempts/{{ p.attempt_id }}/result">{{ p.label }}</a> <span class="paper-meta">{{ p.kind }}</span></td>
+                  <td>{{ p.when.strftime("%d %b %Y") }}</td><td>{{ p.score|marks }}</td><td>{{ p.max|marks }}</td><td>{{ p.percent|marks }}%</td>
+                </tr>
+              {% endfor %}
+            </table>
+          </div>
+        </details>
+      </figure>
+    {% elif points %}
+      <p>You've taken one timed test so far ({{ points[0].percent|marks }}% in {{ points[0].label }}). Take another and a trend line appears here.</p>
+    {% else %}
+      <p class="paper-meta">Take a timed test to see how your score changes over time.</p>
+    {% endif %}
+
+    {# ---------------- where to focus ---------------- #}
+    <h2 id="weak">Where to focus</h2>
+    {% if weak.items %}
+      <p>
+        {{ "Topics" if weak.kind == "topics" else "Subjects" }} where you're below {{ weak_below }}% (with at least
+        {{ min_sample }} answers):
+      </p>
+      <ul class="paper-list">
+        {% for w in weak["items"] %}
+          <li><span class="paper-title">{{ w.name }}</span>
+            <span class="paper-meta">{{ w.accuracy }}% right · {{ w.right }} of {{ w.answered }}</span></li>
+        {% endfor %}
+      </ul>
+      <form method="post" action="/analytics/practise-weak">
+        <input type="hidden" name="range" value="{{ range_key }}">
+        <button type="submit" class="big">Practise these ({{ practise_count }} questions)</button>
+      </form>
+    {% else %}
+      <p class="paper-meta">
+        Nothing is flagged as weak. A {{ "topic" if topics else "subject" }} is flagged when your accuracy is below
+        {{ weak_below }}% over at least {{ min_sample }} answers — fewer than that isn't enough to judge.
+      </p>
+    {% endif %}
+
+    {# ---------------- accuracy by subject / topic: emphasis (accent = weak, grey = the rest) ---------------- #}
+    {% macro accuracy_table(groups, with_subject) %}
+      <div class="table-wrap">
+        <table class="user-table">
+          <tr><th>{{ "Topic" if with_subject else "Subject" }}</th>{% if with_subject %}<th>Subject</th>{% endif %}
+              <th>Answered</th><th>Right</th><th>Accuracy</th><th>Average time</th><th>Status</th></tr>
+          {% for g in groups %}
+            <tr>
+              <td>{{ g.name }}</td>{% if with_subject %}<td>{{ g.subject }}</td>{% endif %}
+              <td>{{ g.answered }}</td><td>{{ g.right }}</td><td>{{ g.accuracy }}%</td>
+              <td>{{ g.avg_seconds|round|int|duration if g.avg_seconds else "—" }}</td>
+              <td>{% if g.weak %}<strong>Weak</strong>{% elif g.enough %}OK{% else %}Not enough answers yet{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </table>
+      </div>
+    {% endmacro %}
+
+    <h2 id="subjects">Accuracy by subject</h2>
+    {% if subject_svg %}
+      <figure class="viz">
+        <figcaption class="viz-title">Percentage of answers right, by subject</figcaption>
+        <div class="viz-legend">
+          <span><i class="key accent"></i> Weak — below {{ weak_below }}%</span>
+          <span><i class="key grey"></i> Everything else</span>
+        </div>
+        {{ subject_svg }}
+        <details class="viz-table"><summary>View as a table</summary>{{ accuracy_table(subjects, false) }}</details>
+      </figure>
+    {% else %}
+      <p class="paper-meta">Once you've answered at least {{ min_sample }} questions in a subject, it appears here.</p>
+    {% endif %}
+
+    {% if topics %}
+      <h2 id="topics">Accuracy by topic</h2>
+      {% if topic_svg %}
+        <figure class="viz">
+          <figcaption class="viz-title">Percentage of answers right, by topic — weakest first</figcaption>
+          <div class="viz-legend">
+            <span><i class="key accent"></i> Weak — below {{ weak_below }}%</span>
+            <span><i class="key grey"></i> Everything else</span>
+          </div>
+          {{ topic_svg }}
+          <details class="viz-table"><summary>View as a table</summary>{{ accuracy_table(topics, true) }}</details>
+        </figure>
+      {% else %}
+        <p class="paper-meta">Topics appear here once you've answered at least {{ min_sample }} questions in one.</p>
+      {% endif %}
+    {% endif %}
+
+    {# ---------------- time ---------------- #}
+    {% if subjects %}
+      <h2 id="time">Time per answer</h2>
+      <div class="table-wrap">
+        <table class="user-table">
+          <tr><th>Subject</th><th>Average time</th><th>Answers timed</th></tr>
+          {% for s in subjects %}
+            <tr><td>{{ s.name }}</td><td>{{ s.avg_seconds|round|int|duration if s.avg_seconds else "—" }}</td><td>{{ s.answered }}</td></tr>
+          {% endfor %}
+        </table>
+      </div>
+      <p class="paper-meta">Time is measured by the server between screens, and any one screen counts for at most 5 minutes.</p>
+    {% endif %}
+  {% endif %}
+
+  {# ---------------- the question bank, not the student ---------------- #}
+  <h2 id="frequency">What official PYQs ask about</h2>
+  {% if frequency_svg %}
+    <figure class="viz">
+      <figcaption class="viz-title">
+        Questions per {{ "topic" if frequency.kind == "topics" else "subject" }}, across {{ frequency.total }}
+        official PYQ question{{ "s" if frequency.total != 1 else "" }}
+      </figcaption>
+      {{ frequency_svg }}
+      <details class="viz-table">
+        <summary>View as a table</summary>
+        <div class="table-wrap">
+          <table class="user-table">
+            <tr><th>{{ "Topic" if frequency.kind == "topics" else "Subject" }}</th>{% if frequency.kind == "topics" %}<th>Subject</th>{% endif %}<th>Questions</th></tr>
+            {% for r in frequency.rows %}
+              <tr><td>{{ r.name }}</td>{% if frequency.kind == "topics" %}<td>{{ r.subject }}</td>{% endif %}<td>{{ r.count }}</td></tr>
+            {% endfor %}
+          </table>
+        </div>
+      </details>
+    </figure>
+    {% if frequency.kind == "subjects" %}
+      <p class="paper-meta">Topics haven't been assigned to these questions yet, so this shows subjects instead.</p>
+    {% endif %}
+    <p class="paper-meta">Only questions from official PYQ papers that are live are counted. This isn't affected by the date range.</p>
+  {% else %}
+    <p class="paper-meta">No official PYQ questions are available yet.</p>
+  {% endif %}
+
+  <script src="/static/charts.js"></script>
+{% endblock %}

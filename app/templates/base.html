@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f172a">
+  <title>{% block title %}Dashboard{% endblock %} · PYQ Practice</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='18' height='18' rx='4' fill='%232563eb' stroke='none'/%3E%3Cpath d='M8 8h5a3 3 0 0 1 0 6H8zM8 14v3' stroke='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+{% set user = request.state.user %}
+{% if user %}
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="app">
+    <input type="checkbox" id="nav-toggle" class="nav-toggle" aria-label="Show the menu">
+
+    <aside class="sidebar" aria-label="Main navigation">
+      <a href="/" class="brand">
+        <span class="brand-mark"><span class="icon i-practice" aria-hidden="true"></span></span>
+        <span>PYQ Practice<small>{{ "Admin console" if user.is_admin else "Exam preparation" }}</small></span>
+      </a>
+
+      <nav class="side-nav">
+        {% for group in nav_groups(request) %}
+          <div class="nav-group">
+            {% if group.title %}<div class="nav-title">{{ group.title }}</div>{% endif %}
+            {% for item in group["items"] %}
+              <a href="{{ item.href }}" class="nav-link{{ ' active' if item.active }}"{% if item.active %} aria-current="page"{% endif %}>
+                <span class="icon i-{{ item.icon }}" aria-hidden="true"></span>
+                <span>{{ item.label }}</span>
+                {% if item.badge %}<span class="badge">{{ item.badge }}</span>{% endif %}
+              </a>
+            {% endfor %}
+          </div>
+        {% endfor %}
+      </nav>
+
+      <div class="side-foot">PYQ Practice · UPSC prelims practice</div>
+    </aside>
+    <label for="nav-toggle" class="nav-backdrop" aria-hidden="true"></label>
+
+    <div class="main-col">
+      <header class="topbar">
+        <label for="nav-toggle" class="menu-button" role="button" aria-label="Open the menu"><span class="icon i-menu" aria-hidden="true"></span></label>
+        <a href="/" class="brand topbar-brand"><span class="brand-mark"><span class="icon i-practice" aria-hidden="true"></span></span><span>PYQ Practice</span></a>
+        <div class="topbar-title">{{ self.title() }}</div>
+        <div class="topbar-spacer"></div>
+        <div class="top-actions">
+          {% if user.is_admin %}
+            <a href="/upload" class="btn-link top-cta"><span class="icon i-upload" aria-hidden="true"></span><span>Upload paper</span></a>
+            <a href="/admin/users" class="icon-link" title="Accounts waiting for approval" aria-label="Accounts waiting for approval">
+              <span class="icon i-users" aria-hidden="true"></span>{% if request.state.pending_count %}<span class="badge">{{ request.state.pending_count }}</span>{% endif %}
+            </a>
+            <a href="/admin/reports" class="icon-link" title="Reported questions" aria-label="Reported questions">
+              <span class="icon i-flag" aria-hidden="true"></span>{% if request.state.report_count %}<span class="badge">{{ request.state.report_count }}</span>{% endif %}
+            </a>
+          {% else %}
+            <a href="/practice" class="btn-link top-cta"><span class="icon i-practice" aria-hidden="true"></span><span>Start practising</span></a>
+          {% endif %}
+          <details class="user-menu">
+            <summary aria-label="Account menu">
+              <span class="avatar" aria-hidden="true">{{ (user.display_name or user.username)[:1]|upper }}</span>
+              <span class="who"><strong>{{ user.display_name or user.username }}</strong><small>{{ "Administrator" if user.is_admin else "Student" }}</small></span>
+            </summary>
+            <div class="menu-panel">
+              <a href="/account"><span class="icon i-user" aria-hidden="true"></span>Your account</a>
+              <a href="/account/password"><span class="icon i-shield" aria-hidden="true"></span>Change password</a>
+              <form method="post" action="/logout"><button type="submit"><span class="icon i-logout" aria-hidden="true"></span>Log out</button></form>
+            </div>
+          </details>
+        </div>
+      </header>
+{% endif %}
+
+{% if user %}
+      <main id="main" class="container {% block main_class %}{% endblock %}">
+{% else %}
+  <header class="topbar public-bar">
+    <a href="/login" class="brand topbar-brand"><span class="brand-mark"><span class="icon i-practice" aria-hidden="true"></span></span><span>PYQ Practice</span></a>
+    <div class="topbar-spacer"></div>
+    <div class="top-actions">
+      <a href="/login" class="btn-link secondary-link">Log in</a>
+      <a href="/signup" class="btn-link">Request an account</a>
+    </div>
+  </header>
+  <main id="main" class="auth-main">
+    <a class="auth-brand" href="/login"><span class="brand-mark"><span class="icon i-practice" aria-hidden="true"></span></span>PYQ Practice</a>
+    <div class="auth-card">
+{% endif %}
+        {% block content %}{% endblock %}
+{% if user %}
+      </main>
+    </div>
+  </div>
+{% else %}
+    </div>
+  </main>
+{% endif %}</body>
+</html>

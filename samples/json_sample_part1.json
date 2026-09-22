@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "paper": {
+    "title": "Sample JSON paper",
+    "source_type": "coaching_test",
+    "source_name": "Sample Institute",
+    "year": 2026,
+    "expected_total": 10
+  },
+  "questions": [
+    {
+      "number": 1,
+      "question": "Which of the following is the supreme law of India?\nConsider the options below.",
+      "options": { "a": "The Indian Penal Code", "b": "The Constitution of India", "c": "The Code of Criminal Procedure", "d": "The Companies Act" },
+      "correct_answer": "b",
+      "explanation": "The Constitution is the supreme law of the land; every other law derives its authority from it.",
+      "subject": "Polity",
+      "topic": null,
+      "has_image": false,
+      "page": 1,
+      "uncertain": false
+    },
+    {
+      "number": 2,
+      "question": "Consider the following statements about the Preamble:\n1. It begins with the words 'We, the people of India'.\n2. It is enforceable in a court of law.\nWhich of the statements given above is/are correct?",
+      "options": { "a": "1 only", "b": "2 only", "c": "Both 1 and 2", "d": "Neither 1 nor 2" },
+      "correct_answer": "a",
+      "explanation": null,
+      "subject": "Polity",
+      "topic": null,
+      "has_image": false,
+      "page": 1,
+      "uncertain": false
+    },
+    {
+      "number": 3,
+      "question": "The Harappan city of Lothal is best known for its",
+      "options": { "a": "great bath", "b": "dockyard", "c": "granary", "d": "citadel wall" },
+      "correct_answer": null,
+      "explanation": null,
+      "subject": "History",
+      "topic": null,
+      "has_image": false,
+      "page": 2,
+      "uncertain": false
+    },
+    {
+      "number": 4,
+      "question": "Which river is known as the 'Sorrow of Bihar' because of its frequent floods?",
+      "options": { "a": "Gandak", "b": "Kosi", "c": "Son", "d": "Ghaghara" },
+      "correct_answer": "b",
+      "explanation": null,
+      "subject": "Geography",
+      "topic": null,
+      "has_image": false,
+      "page": 2,
+      "uncertain": false
+    },
+    {
+      "number": 5,
+      "question": "The repo rate is the rate at which the",
+      "options": { "a": "RBI lends to commercial banks", "b": "commercial banks lend to the public", "c": "government borrows from the RBI", "d": "RBI borrows from commercial banks" },
+      "correct_answer": "a",
+      "explanation": null,
+      "subject": "Economy",
+      "topic": null,
+      "has_image": false,
+      "page": 3,
+      "uncertain": false
+    }
+  ]
+}
+Covered questions 1 to 5.

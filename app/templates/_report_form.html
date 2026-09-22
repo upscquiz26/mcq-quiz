@@ -1,0 +1,35 @@
+{# "Report a problem" for a question whose answer is showing. Needs: question, report_kinds, my_report, page_url (where to come back to). #}
+<details class="report-box">
+  <summary>Report a problem with this question</summary>
+  {% if my_report and my_report.status == "open" %}
+    <p class="paper-meta">You reported this on {{ my_report.created_at.strftime("%d %b %Y") }}. The admin hasn't looked at it yet.</p>
+  {% else %}
+    {% if my_report %}
+      <p class="paper-meta">
+        Your last report on this question ({{ my_report.created_at.strftime("%d %b %Y") }}) was
+        {{ "resolved" if my_report.status == "resolved" else "closed without a change" }}.
+      </p>
+    {% endif %}
+    <form method="post" action="/questions/{{ question.id }}/report" class="reason-form">
+      <input type="hidden" name="next" value="{{ page_url }}">
+      <label for="report-kind-{{ question.id }}">What looks wrong?</label>
+      <select id="report-kind-{{ question.id }}" name="kind">
+        {% for value, label in report_kinds.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+      </select>
+      {% if lang_modes(question).has_hi %}
+        {% set mine = user_language(request) %}
+        <label for="report-lang-{{ question.id }}">Which language version?</label>
+        <select id="report-lang-{{ question.id }}" name="language">
+          <option value="en" {% if mine == "en" %}selected{% endif %}>English version</option>
+          <option value="hi" {% if mine == "hi" %}selected{% endif %}>Hindi version</option>
+          <option value="both" {% if mine == "both" %}selected{% endif %}>Both / the whole question</option>
+        </select>
+      {% endif %}
+      <label for="report-note-{{ question.id }}">Details (optional{{ ", required for “Something else”" }})</label>
+      <textarea id="report-note-{{ question.id }}" name="note" maxlength="{{ report_max_note }}"
+                placeholder="e.g. Article 21 is the right to life, so the key should be B"></textarea>
+      <button type="submit" class="secondary">Send report</button>
+      <div class="paper-meta">This goes to the admin only. It doesn't change your score.</div>
+    </form>
+  {% endif %}
+</details>

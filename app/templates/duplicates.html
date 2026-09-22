@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Duplicates{% endblock %}
+{% macro side(card, tag) %}
+  <div class="dup-side">
+    <div class="q-num"><span class="chip small">{{ tag }}</span>
+      <a href="/review/{{ card.paper.id }}#q{{ card.q.question_number }}">{{ card.label }}</a>
+      {% if card.q.status == "live" %}<span class="flag ok">Live</span>
+      {% elif card.q.status == "verified" %}<span class="flag ok">Verified</span>
+      {% elif card.q.status == "quarantined" %}<span class="flag">Quarantined</span>
+      {% else %}<span class="flag">Needs review</span>{% endif %}
+    </div>
+    {% set shown = primary(card.q) %}
+    <p class="q-text" {% if shown[0] == "hi" %}lang="hi"{% endif %}>{{ shown[1] }}</p>
+    <ul class="opt-list">
+      {% for letter, text in [("A", shown[2][0]), ("B", shown[2][1]), ("C", shown[2][2]), ("D", shown[2][3])] %}
+        <li class="opt static {{ 'correct' if letter == card.q.correct_answer }}"><span class="opt-letter">{{ letter }}</span><span class="opt-text">{{ text }}</span>
+          {% if letter == card.q.correct_answer %}<span class="opt-tag">Marked correct</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% if not card.q.correct_answer %}<p class="paper-meta">No answer set yet.</p>{% endif %}
+    {% if card.sources %}<p class="paper-meta">Also appeared in: {% for s in card.sources %}{{ s.label }}{{ ", " if not loop.last }}{% endfor %}</p>{% endif %}
+  </div>
+{% endmacro %}
+{% block content %}
+  <div class="page-head"><div>
+    <h1>Duplicates</h1>
+    <p class="page-sub">The same question showing up twice. Nothing is merged unless you say so, and nothing is ever deleted.</p>
+  </div></div>
+
+  {% if flash %}<div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>{% endif %}
+
+  <div class="review-bar"><div class="toolbar">
+    <span>
+      <a href="?show=open{{ '&paper_id=%d' % paper_id if paper_id }}" class="{{ 'on' if show == 'open' }}">Open ({{ open_total }})</a> ·
+      <a href="?show=decided{{ '&paper_id=%d' % paper_id if paper_id }}" class="{{ 'on' if show == 'decided' }}">Decided</a>
+      {% if paper %}· only <strong>{{ paper.title }}</strong> (<a href="/admin/duplicates?show={{ show }}">all papers</a>){% endif %}
+    </span>
+    <form method="post" action="/admin/duplicates/scan" class="inline-form">
+      <input type="hidden" name="paper_id" value="{{ paper_id or '' }}">
+      <button type="submit" class="secondary">Look again{{ " in this paper" if paper else " in every paper" }}</button>
+    </form>
+  </div></div>
+
+  <p class="paper-meta">
+    <strong>Identical</strong> means the same words and the same options (case, punctuation, spacing and option order ignored).
+    <strong>Very similar</strong> means at least 90% alike — reworded, or a slightly mis-read copy. Archived papers and quarantined questions aren't compared.
+  </p>
+
+  {% for p in pairs %}
+    <div class="q-card dup-card {{ 'needs-review' if p.row.status == 'open' else 'reviewed' }}">
+      <div class="q-num">
+        {% if p.row.kind == "exact" %}<span class="flag">Identical</span>{% else %}<span class="flag">Very similar · {{ p.row.score }}%</span>{% endif %}
+        {% if p.row.status == "kept_both" %}<span class="flag ok">Kept both</span>{% endif %}
+        {% if p.row.status == "merged" %}<span class="flag ok">Merged into {{ p.merged_into }}</span>{% endif %}
+      </div>
+      {% if p.answers_differ and p.row.status == "open" %}
+        <div class="error">These two disagree on the answer (older: {{ p.answer_a }} — newer: {{ p.answer_b }}). One of them is wrong — check the printed paper before you merge.</div>
+      {% endif %}
+      <div class="dup-grid">
+        {{ side(p.a, "Older") }}
+        {{ side(p.b, "Newer") }}
+      </div>
+      {% if p.row.status == "open" %}
+        <div class="inline-form dup-actions">
+          <form method="post" action="/admin/duplicates/{{ p.row.id }}/keep-both">
+            <input type="hidden" name="paper_id" value="{{ paper_id or '' }}">
+            <button type="submit" class="secondary">Keep both — they're different</button>
+          </form>
+          <form method="post" action="/admin/duplicates/{{ p.row.id }}/merge"
+                onsubmit="return confirm('Keep the older question and take the newer one out of circulation? It goes to Quarantine and can be restored.');">
+            <input type="hidden" name="paper_id" value="{{ paper_id or '' }}"><input type="hidden" name="keep" value="{{ p.a.q.id }}">
+            <button type="submit">Keep older, merge newer into it</button>
+          </form>
+          <form method="post" action="/admin/duplicates/{{ p.row.id }}/merge"
+                onsubmit="return confirm('Keep the newer question and take the older one out of circulation? It goes to Quarantine and can be restored.');">
+            <input type="hidden" name="paper_id" value="{{ paper_id or '' }}"><input type="hidden" name="keep" value="{{ p.b.q.id }}">
+            <button type="submit">Keep newer, merge older into it</button>
+          </form>
+        </div>
+        {% if p.a.q.status == "live" or p.b.q.status == "live" %}
+          <p class="paper-meta">A live question that is merged away disappears for students straight away; the one you keep must be confirmed and published to replace it.</p>
+        {% endif %}
+      {% endif %}
+    </div>
+  {% else %}
+    <p class="empty-state">{% if show == "open" %}No open duplicates. New ones are looked for after every import and every edit of a question's wording.{% else %}Nothing has been decided yet.{% endif %}</p>
+  {% endfor %}
+  {% if total > shown %}<p class="paper-meta">Showing the first {{ shown }} of {{ total }}. Decide these and the rest will follow.</p>{% endif %}
+{% endblock %}

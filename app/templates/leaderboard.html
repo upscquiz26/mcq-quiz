@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_board.html" import summary, weekly_table %}
+{% block title %}Leaderboard{% endblock %}
+{% block content %}
+  <h1>Leaderboard</h1>
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  <p class="paper-meta">
+    Only each person's <strong>first attempt</strong> at a timed test counts, so retaking never changes a rank.
+    Everyone is ranked on exactly the same questions. Ties are broken by less time taken.
+  </p>
+
+  <h2>The week</h2>
+  <p class="filter-row">
+    <a href="?week=this" class="{{ 'on' if week == 'this' }}">This week</a> ·
+    <a href="?week=last" class="{{ 'on' if week == 'last' }}">Last week</a>
+    <span class="paper-meta"> — {{ weekly.start.strftime("%d %b") }} to {{ weekly.end.strftime("%d %b %Y") }} (UTC)</span>
+  </p>
+  {% if weekly.participants %}
+    <p class="paper-meta">Average percentage of the maximum marks across the full-length tests each person finished that week.</p>
+    {{ summary(weekly, me) }}
+    {{ weekly_table(weekly, duration) }}
+    <p class="paper-meta">Showing the top {{ top_n }} and your own place.</p>
+  {% else %}
+    <div class="empty-state">No full-length tests were finished {{ "this" if week == "this" else "last" }} week yet.</div>
+  {% endif %}
+
+  <h2>By test</h2>
+  {% if listed %}
+    <ul class="paper-list">
+      {% for e in listed %}
+        <li>
+          <a class="paper-title" href="{{ e.url }}">{{ e.title }}</a>
+          <span class="paper-meta">{{ e.detail }} · {{ e.participants }} participant{{ "s" if e.participants != 1 else "" }}
+            {% if e.you %}· you are #{{ e.you.rank }}{% endif %}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="paper-meta">Nobody has finished a ranked test yet. The first full-length test or paper section anyone finishes appears here.</p>
+  {% endif %}
+{% endblock %}

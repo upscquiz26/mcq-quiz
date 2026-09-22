@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Papers{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <div>
+      <h1>Your papers</h1>
+      <p class="page-sub">{% if request.state.user.is_admin %}Upload, review and publish question papers.{% else %}Papers you can practise.{% endif %}</p>
+    </div>
+    {% if request.state.user.is_admin %}<div class="page-actions"><a href="/upload" class="btn-link">Upload a paper</a><a href="/admin/import/json" class="btn-link secondary-link">Import JSON</a></div>{% endif %}
+  </div>
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  {% macro paper_row(p) %}
+    <li>
+      {% if request.state.user.is_admin %}
+        <a href="/review/{{ p.id }}">{{ p.title }}</a>
+      {% else %}
+        <span class="paper-title">{{ p.title }}</span>
+      {% endif %}
+      <div class="paper-meta">
+        {% if p.source_type %}{{ source_labels.get(p.source_type, p.source_type) }} · {% endif %}
+        {{ p.exam_type.value if p.exam_type else "" }}
+        {% if p.year %} · {{ p.year }}{% endif %}
+        {% set active = p.questions|rejectattr("status", "equalto", "quarantined")|list %}
+        · {{ active|length }} question{{ "s" if active|length != 1 else "" }}
+        {% if request.state.user.is_admin %}
+          {% if p.publish_status == "published" %}· <span class="flag ok">Published</span>{% endif %}
+          {% if p.status == "processing" %}
+            · reading pages… {{ p.pages_done or 0 }}/{{ p.pages_total or "?" }}
+          {% elif p.status == "failed" %}
+            · <span class="flag">Reading failed</span>
+          {% else %}
+            {% set to_confirm = active|selectattr("status", "in", ["draft", "needs_review"])|list|length %}
+            {% set confirmed = active|selectattr("status", "in", ["verified", "live"])|list|length %}
+            {% if to_confirm %} · <a href="/review/{{ p.id }}?show=to_confirm">{{ to_confirm }} awaiting review</a>{% endif %}
+            {% if confirmed %} · <a href="/review/{{ p.id }}?show=confirmed">{{ confirmed }} confirmed</a>{% endif %}
+          {% endif %}
+        {% endif %}
+      </div>
+      {% if request.state.user.is_admin and p.status == "ready" and active|length %}
+        {% set pct = (100 * confirmed / (active|length))|round|int %}
+        <div class="progress thin" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ pct }}" aria-label="Review progress">
+          <div class="progress-bar {{ "done" if pct == 100 }}" style="width: {{ pct }}%"></div>
+        </div>
+        <div class="paper-meta">{{ pct }}% reviewed</div>
+      {% endif %}
+      {% if request.state.user.is_admin and p.status == "ready" %}
+        <div class="paper-actions">
+          {% if to_confirm %}<a class="btn-link" href="/review/{{ p.id }}?show=to_confirm">Review {{ to_confirm }} awaiting</a>{% endif %}
+          {% if confirmed %}
+            <form method="post" action="/review/{{ p.id }}/reopen-all" class="inline-form"
+                  onsubmit="return confirm('Send all {{ confirmed }} confirmed questions of this paper back to review? Students stop seeing them until you confirm them again.');">
+              <button type="submit" class="secondary">Review again ({{ confirmed }})</button>
+            </form>
+          {% endif %}
+        </div>
+      {% endif %}
+    </li>
+  {% endmacro %}
+
+  {% if papers %}
+    <ul class="paper-list">
+      {% for p in papers %}{{ paper_row(p) }}{% endfor %}
+    </ul>
+  {% else %}
+    <div class="empty-state">
+      {% if request.state.user.is_admin %}
+        No papers yet. Upload a PYQ PDF to build your first question bank.<br>
+        <a href="/upload" class="btn-link">Upload a paper</a>
+      {% else %}
+        No papers yet. The admin hasn't added any question papers.
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if request.state.user.is_admin %}
+    {% if archived %}
+      <details class="tool-box">
+        <summary>Archived papers ({{ archived|length }})</summary>
+        <ul class="paper-list">
+          {% for p in archived %}
+            <li>
+              <a href="/review/{{ p.id }}">{{ p.title }}</a>
+              <div class="paper-meta">
+                archived {{ p.archived_at.strftime("%d %b %Y") }}
+                <form method="post" action="/papers/{{ p.id }}/unarchive" style="display:inline">
+                  <button type="submit" class="link-button">Restore</button>
+                </form>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      </details>
+    {% endif %}
+  {% endif %}
+{% endblock %}

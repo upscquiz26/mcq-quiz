@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Timed tests{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <div>
+      <h1>Timed tests</h1>
+      <p class="page-sub">
+        The clock runs on the server: refreshing, closing the browser or switching device never resets it, and the
+        test is submitted for you when time is up. You can change answers until then; everything is marked at the end.
+      </p>
+    </div>
+  </div>
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  <h2>Full-length tests</h2>
+  {% if full_tests %}
+    <ul class="test-grid">
+      {% for t in full_tests %}
+        <li class="test-card">
+          <span class="paper-title">{{ t.paper.title }}</span>
+          <div class="paper-meta">
+            {{ t.count }} question{{ "s" if t.count != 1 else "" }} · {{ t.minutes }} minutes
+            {% if t.scheme_ready %}
+              · {{ t.paper.marks_per_question|marks }} mark{{ "s" if t.paper.marks_per_question != 1 else "" }} each,
+              −{{ (t.paper.negative_fraction * t.paper.marks_per_question)|marks }} for a wrong answer
+            {% endif %}
+          </div>
+          <div class="test-actions">
+            {% if t.open_id %}
+              <a href="/attempts/{{ t.open_id }}" class="btn-link">Resume — the clock is running</a>
+            {% elif t.scheme_ready %}
+              <form method="post" action="/tests/start"
+                    onsubmit="return confirm('Start now? The {{ t.minutes }}-minute timer begins immediately and cannot be paused.');">
+                <input type="hidden" name="mode" value="full">
+                <input type="hidden" name="paper_id" value="{{ t.paper.id }}">
+                <button type="submit">Start test</button>
+              </form>
+              {% if t.taken %}
+                <span class="paper-meta">You've taken this {{ t.taken }} time{{ "s" if t.taken != 1 else "" }}. Only your first attempt counts for ranking.</span>
+              {% else %}
+                <span class="paper-meta">Your first attempt is the one that counts for ranking.</span>
+              {% endif %}
+            {% else %}
+              <span class="paper-meta">Not available as a timed test yet — the marking scheme hasn't been set. You can still practise its questions.</span>
+            {% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty-state">No full-length tests are available yet.</p>
+  {% endif %}
+
+  <h2>Sectional tests</h2>
+  <p class="paper-meta">One subject from one paper, exactly as set. Your first attempt at a section counts for ranking.</p>
+  {% for (paper_id, paper_title), entries in sections_by_paper.items() %}
+    <details class="tool-box" {% if loop.first %}open{% endif %}>
+      <summary>{{ paper_title }}</summary>
+      <ul class="paper-list">
+        {% for s in entries %}
+          <li>
+            <span class="paper-title">{{ s.subject }}</span>
+            <div class="paper-meta">{{ s.count }} question{{ "s" if s.count != 1 else "" }} · {{ s.minutes }} minute{{ "s" if s.minutes != 1 else "" }}</div>
+            <div class="test-actions">
+              {% if s.open_id %}
+                <a href="/attempts/{{ s.open_id }}" class="btn-link">Resume — the clock is running</a>
+              {% else %}
+                <form method="post" action="/tests/start"
+                      onsubmit="return confirm('Start now? The {{ s.minutes }}-minute timer begins immediately and cannot be paused.');">
+                  <input type="hidden" name="mode" value="section">
+                  <input type="hidden" name="paper_id" value="{{ s.paper_id }}">
+                  <input type="hidden" name="subject_id" value="{{ s.subject_id }}">
+                  <button type="submit" class="secondary">Start</button>
+                </form>
+                {% if s.taken %}<span class="paper-meta">Taken {{ s.taken }}× before.</span>{% endif %}
+              {% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </details>
+  {% else %}
+    <p class="empty-state">No sections are available yet. (A section needs questions with a subject set.)</p>
+  {% endfor %}
+
+  <h2>Custom timed test</h2>
+  <p class="paper-meta">
+    A random selection on one subject, timed at {{ seconds_per_question }} seconds per question. Custom tests are for
+    practice and are never ranked, because everyone would be answering different questions.
+  </p>
+  {% if options.subjects %}
+    <form method="post" action="/tests/start" class="practice-form form-card"
+          onsubmit="return confirm('Start now? The timer begins immediately and cannot be paused.');">
+      <input type="hidden" name="mode" value="custom">
+      <div class="row wrap">
+        <div>
+          <label for="c_subject">Subject</label>
+          <select id="c_subject" name="subject_id" required>
+            <option value="">Choose…</option>
+            {% for s in options.subjects %}<option value="{{ s.id }}">{{ s.name }} ({{ s.count }})</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="c_source">Source</label>
+          <select id="c_source" name="source_type">
+            <option value="">Any</option>
+            {% for s in options.sources %}<option value="{{ s.value }}">{{ s.label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="c_year">Year</label>
+          <select id="c_year" name="year">
+            <option value="">Any</option>
+            {% for y in options.years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="c_difficulty">Difficulty</label>
+          <select id="c_difficulty" name="difficulty">
+            <option value="">Any</option>
+            {% for d in options.difficulties %}<option value="{{ d }}">{{ d|capitalize }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="c_count">Questions</label>
+          <select id="c_count" name="count">
+            {% for n in count_choices %}<option value="{{ n }}" {% if n == 20 %}selected{% endif %}>{{ n }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <label class="check-line"><input type="checkbox" name="unattempted" value="1"> Only questions I haven't answered yet</label>
+      <button type="submit" class="big">Start custom test</button>
+    </form>
+  {% else %}
+    <p class="empty-state">No subjects with questions yet.</p>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <div>
+      <h1>Welcome, {{ request.state.user.display_name or request.state.user.username }}</h1>
+      <p class="page-sub">{% if due_today %}{{ due_today }} revision question{{ "s" if due_today != 1 else "" }} waiting. {% endif %}Pick up where you left off, or start something new.</p>
+    </div>
+
+  </div>
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  <div class="dash-grid home-grid">
+    {% if unfinished %}
+      <section class="dash-card hero span-3">
+        <div class="card-title"><span class="icon-badge"><span class="icon i-clock" aria-hidden="true"></span></span><h2>Continue where you left off</h2></div>
+        <ul class="paper-list">
+          {% for a in unfinished %}
+            <li>
+              <a href="/attempts/{{ a.id }}">{{ kind_labels.get(a.kind, a.kind) }}</a>
+              <div class="paper-meta">{{ answered_count(a) }} of {{ a.responses|length }} answered{{ time_left(a) }}</div>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+
+    <section class="dash-card{{ '' if unfinished else ' hero span-2' }}">
+      <div class="card-title"><span class="icon-badge"><span class="icon i-practice" aria-hidden="true"></span></span><h2>Available to practise</h2></div>
+      <p>
+        <strong>{{ total_questions }}</strong> question{{ "s" if total_questions != 1 else "" }}
+        across <strong>{{ papers|length }}</strong> paper{{ "s" if papers|length != 1 else "" }}
+      </p>
+      <p class="paper-meta">Untimed topic practice with instant answers, or a timed sectional or full-length test.</p>
+      <p><a href="/practice" class="btn-link">Start practising</a> <a href="/tests" class="btn-link secondary-link">Take a timed test</a></p>
+    </section>
+
+    <section class="dash-card" id="today">
+      <div class="card-title"><span class="icon-badge green"><span class="icon i-check" aria-hidden="true"></span></span><h2>Today</h2></div>
+      <p class="today-figure">
+        <strong class="big-num">{{ daily.today }}</strong>
+        {% if daily.target %}of {{ daily.target }} {% endif %}question{{ "s" if daily.today != 1 or daily.target else "" }} answered
+      </p>
+      {% if daily.target %}
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{ daily.target }}" aria-valuenow="{{ [daily.today, daily.target]|min }}"
+             aria-label="Today's target"><div class="progress-bar" style="width: {{ daily.percent }}%"></div></div>
+        <p class="paper-meta">
+          {% if daily.met %}Target reached — well done.{% else %}{{ daily.remaining }} to go.{% endif %}
+        </p>
+      {% endif %}
+      <p>
+        {% if daily.streak %}
+          <span class="chip state-scheduled">{{ daily.streak }}-day streak</span>
+          {% if not daily.active_today %}<span class="paper-meta">answer a question today to keep it going</span>{% endif %}
+        {% else %}
+          <span class="paper-meta">No streak yet — answer a question today to start one.</span>
+        {% endif %}
+        {% if daily.best > daily.streak %}<span class="paper-meta">Best: {{ daily.best }} days.</span>{% endif %}
+      </p>
+      {% if not daily.target %}
+        <p class="paper-meta"><a href="/account#daily_target">Set a daily target</a></p>
+      {% endif %}
+    </section>
+
+    {% if due_today %}
+      <section class="dash-card">
+        <div class="card-title"><span class="icon-badge warm"><span class="icon i-revision" aria-hidden="true"></span></span><h2>Revision due today</h2></div>
+        <p><strong class="big-num">{{ due_today }}</strong> question{{ "s" if due_today != 1 else "" }} from your mistakes are due.</p>
+        <p><a href="/revision" class="btn-link">Revise now</a></p>
+      </section>
+    {% endif %}
+
+    {% if recent_tests %}
+      <section class="dash-card">
+        <div class="card-title"><span class="icon-badge"><span class="icon i-chart" aria-hidden="true"></span></span><h2>Recent tests</h2></div>
+        <ul class="paper-list">
+          {% for t in recent_tests %}
+            <li>
+              <a href="/attempts/{{ t.attempt_id }}/result">{{ t.label }}</a>
+              <div class="paper-meta">
+                <strong>{{ t.percent|marks }}%</strong> ({{ t.score|marks }} / {{ t.max|marks }}) · {{ t.kind }} · {{ t.when.strftime("%d %b") }}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+        <p class="paper-meta"><a href="/analytics">See your full progress →</a></p>
+      </section>
+    {% endif %}
+
+    {% if weak["items"] %}
+      <section class="dash-card">
+        <div class="card-title"><span class="icon-badge red"><span class="icon i-flag" aria-hidden="true"></span></span><h2>Where to focus</h2></div>
+        <ul class="paper-list">
+          {% for w in weak["items"] %}
+            <li>{{ w.name }} <span class="paper-meta">{{ w.accuracy }}% right · {{ w.answered }} answers</span></li>
+          {% endfor %}
+        </ul>
+        <form method="post" action="/analytics/practise-weak">
+          <button type="submit">Practise these</button>
+        </form>
+      </section>
+    {% endif %}
+
+    <section class="dash-card">
+      <div class="card-title"><span class="icon-badge"><span class="icon i-user" aria-hidden="true"></span></span><h2>Your account</h2></div>
+      <p class="paper-meta">Change your password, set your display name, and choose whether you appear on leaderboards.</p>
+      <p><a href="/account" class="btn-link secondary-link">Open account</a></p>
+    </section>
+  </div>
+
+  <h2>Papers</h2>
+  {% if papers %}
+    <ul class="paper-list">
+      {% for p in papers %}
+        <li>
+          <span class="paper-title">{{ p.title }}</span>
+          <div class="paper-meta">
+            {% if p.source_type %}{{ source_labels.get(p.source_type, p.source_type) }} · {% endif %}
+            {{ p.exam_type.value if p.exam_type else "" }}
+            {% if p.year %} · {{ p.year }}{% endif %}
+            · {{ live_counts.get(p.id, 0) }} question{{ "s" if live_counts.get(p.id, 0) != 1 else "" }}
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="empty-state">No papers are available yet. Please check back soon.</div>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}Upload paper{% endblock %}
+{% block content %}
+  <div class="page-head"><div><h1>Upload a paper</h1><p class="page-sub">Add a question paper (PDF), optionally with its answer key.</p></div></div>
+
+  {% if error %}
+    <div class="error">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" action="/upload">
+    <div>
+      <label for="title">Paper title</label>
+      <input type="text" id="title" name="title" value="{{ form.get('title', '') }}"
+             placeholder="e.g. UPPCS Prelims 2023 GS Paper 1" required>
+    </div>
+
+    <fieldset>
+      <legend>Where it came from</legend>
+      <div class="row">
+        <div>
+          <label for="source_type">Source type</label>
+          <select id="source_type" name="source_type">
+            <option value="">—</option>
+            {% for value, label in source_types.items() %}
+              <option value="{{ value }}" {% if form.get('source_type') == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="source_name">Source name</label>
+          <input type="text" id="source_name" name="source_name" value="{{ form.get('source_name', '') }}"
+                 placeholder="UPSC, or the institute's name">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="test_name">Test name</label>
+          <input type="text" id="test_name" name="test_name" value="{{ form.get('test_name', '') }}" placeholder="e.g. Prelims Test Series">
+        </div>
+        <div>
+          <label for="test_number">Test number</label>
+          <input type="text" id="test_number" name="test_number" value="{{ form.get('test_number', '') }}" placeholder="e.g. 1">
+        </div>
+        <div>
+          <label for="series">Series / booklet</label>
+          <select id="series" name="series">
+            <option value="">—</option>
+            {% for s in ["A", "B", "C", "D"] %}
+              <option value="{{ s }}" {% if form.get('series') == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="year">Year</label>
+          <input type="number" id="year" name="year" value="{{ form.get('year', '') }}" placeholder="2023">
+        </div>
+        <div>
+          <label for="exam_type">Type</label>
+          <select id="exam_type" name="exam_type">
+            <option value="full_length" {% if form.get('exam_type') == 'full_length' %}selected{% endif %}>Full-length</option>
+            <option value="sectional" {% if form.get('exam_type') == 'sectional' %}selected{% endif %}>Sectional</option>
+          </select>
+        </div>
+      </div>
+      <label>
+        <input type="checkbox" name="is_current_affairs" value="true" style="width:auto;display:inline-block;">
+        This is a Current Affairs set
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Marking scheme</legend>
+      <div>
+        <label for="preset">Preset</label>
+        <select id="preset">
+          {% for key, p in presets.items() %}
+            <option value="{{ key }}">{{ p.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="row">
+        <div>
+          <label for="expected_total">Expected questions</label>
+          <input type="number" id="expected_total" name="expected_total" min="1" value="{{ form.get('expected_total', '') }}">
+        </div>
+        <div>
+          <label for="marks_per_question">Marks per question</label>
+          <input type="text" id="marks_per_question" name="marks_per_question" value="{{ form.get('marks_per_question', '') }}" placeholder="2">
+        </div>
+        <div>
+          <label for="negative_fraction">Negative marking</label>
+          <input type="text" id="negative_fraction" name="negative_fraction" value="{{ form.get('negative_fraction', '') }}" placeholder="1/3">
+        </div>
+        <div>
+          <label for="duration_minutes">Time allowed (minutes)</label>
+          <input type="number" id="duration_minutes" name="duration_minutes" min="1" max="600" value="{{ form.get('duration_minutes', '') }}" placeholder="120">
+        </div>
+      </div>
+      <div class="paper-meta">
+        Every field is editable; a preset only fills them in. Negative marking is the fraction of a question's marks lost
+        per wrong answer. Full-length timed tests need the marks and the negative marking; if you leave the time blank
+        they get 72 seconds per question.
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Files</legend>
+      <div>
+        <label for="pdf_file">Question paper PDF</label>
+        <input type="file" id="pdf_file" name="pdf_file" accept="application/pdf" required>
+      </div>
+      <div>
+        <label for="answer_file">Answers &amp; explanations PDF (optional)</label>
+        <input type="file" id="answer_file" name="answer_file" accept="application/pdf">
+        <div class="paper-meta">Must contain text lines like “12. Ans– (c)”. Answers and explanations are read exactly as printed.</div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="key_source">Answer key source</label>
+          <input type="text" id="key_source" name="key_source" value="{{ form.get('key_source', '') }}" placeholder="e.g. publisher's key, UPSC official key">
+        </div>
+        <div>
+          <label for="key_version">Key version</label>
+          <input type="text" id="key_version" name="key_version" value="{{ form.get('key_version', '') }}" placeholder="e.g. final, revised 12 Jun">
+        </div>
+      </div>
+      <div>
+        <label for="subject_ranges">Subjects by question number (optional)</label>
+        <input type="text" id="subject_ranges" name="subject_ranges" value="{{ form.get('subject_ranges', '') }}"
+               placeholder="1-30 History, 31-60 Geography, 61-90 Polity">
+        <div class="paper-meta">Subjects: {{ subjects|join(", ") }}. You can also set this later on the review page.</div>
+      </div>
+      {% if subject_templates %}
+      <div>
+        <label for="subject_template">…or use a saved template</label>
+        <select id="subject_template" name="subject_template">
+          <option value="">— none —</option>
+          {% for id, name, ranges in subject_templates %}
+            <option value="{{ id }}" {% if form.get('subject_template') == id|string %}selected{% endif %}>{{ name }}: {{ ranges }}</option>
+          {% endfor %}
+        </select>
+        <div class="paper-meta">Used only when the box above is empty. A template for one series can't be used on a paper of another.</div>
+      </div>
+      {% endif %}
+      <div>
+        <label for="layout">Page layout</label>
+        <select id="layout" name="layout">
+          {% for value, label in layouts.items() %}
+            <option value="{{ value }}" {% if form.get('layout', 'auto') == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <div class="paper-meta">
+          Only matters when the PDF has real text (most official papers do). “Auto-detect” finds one or two columns by itself;
+          change it only if the questions come out jumbled. Scanned PDFs are read by OCR whatever you pick.
+        </div>
+      </div>
+      <label>
+        <input type="checkbox" name="allow_duplicate" value="true" style="width:auto;display:inline-block;">
+        Upload anyway if this file, or a paper for the same test, already exists
+      </label>
+    </fieldset>
+
+    <button type="submit">Upload &amp; read questions</button>
+  </form>
+
+  <p class="paper-meta" style="margin-top:20px;">
+    Questions are read with OCR on this computer — no AI service, no API key. It reads the <strong>English
+    column</strong> of two-column bilingual papers. Reading takes about a second per page and runs in the
+    background; you'll land on a review page that shows its progress. A backup of the database is made
+    automatically before every import.
+  </p>
+
+  <script>
+    (function () {
+      var presets = {{ presets|tojson }};
+      var select = document.getElementById("preset");
+      select.addEventListener("change", function () {
+        var p = presets[select.value];
+        if (!p || select.value === "custom") return;
+        document.getElementById("expected_total").value = p.expected_total;
+        document.getElementById("marks_per_question").value = p.marks;
+        document.getElementById("negative_fraction").value = p.negative;
+        document.getElementById("duration_minutes").value = p.duration;
+      });
+    })();
+  </script>
+{% endblock %}

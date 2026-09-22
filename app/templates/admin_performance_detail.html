@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}{{ name }} — performance{% endblock %}
+{% block content %}
+  <p class="paper-meta"><a href="/admin/performance">← All students</a></p>
+  <h1>{{ name }}</h1>
+  <p class="paper-meta">
+    @{{ student.username }} ·
+    {% if student.last_active_at %}last active {{ student.last_active_at.strftime("%d %b %Y, %H:%M") }} UTC{% else %}never active{% endif %}
+    · read-only view
+  </p>
+
+  <p class="filter-row">
+    {% for key, label in ranges.items() %}
+      <a href="?range={{ key }}" class="{{ 'on' if range_key == key }}">{{ label }}</a>{{ " · " if not loop.last }}
+    {% endfor %}
+    <span class="paper-meta"> — applies to the numbers and charts, not the list of sessions.</span>
+  </p>
+
+  <div class="viz-stats">
+    <div class="viz-stat">
+      <div class="viz-stat-label">Timed tests taken</div>
+      <div class="viz-stat-value">{{ overview.tests_taken }}</div>
+    </div>
+    <div class="viz-stat">
+      <div class="viz-stat-label">Average test score</div>
+      <div class="viz-stat-value">{{ (overview.average_score|marks ~ "%") if overview.average_score is not none else "—" }}</div>
+      <div class="viz-stat-note">of the maximum marks</div>
+    </div>
+    <div class="viz-stat">
+      <div class="viz-stat-label">Accuracy</div>
+      <div class="viz-stat-value">{{ (overview.accuracy|string ~ "%") if overview.accuracy is not none else "—" }}</div>
+      <div class="viz-stat-note">
+        {% if overview.answered %}{{ overview.right }} of {{ overview.answered }} answers right{% else %}no answers in this period{% endif %}
+      </div>
+    </div>
+    <div class="viz-stat">
+      <div class="viz-stat-label">Average time per answer</div>
+      <div class="viz-stat-value">{{ overview.average_seconds|duration if overview.average_seconds is not none else "—" }}</div>
+    </div>
+  </div>
+
+  {# ---------------- weak areas ---------------- #}
+  <h2>Weak areas</h2>
+  {% if weak["items"] %}
+    <p>{{ "Topics" if weak.kind == "topics" else "Subjects" }} below {{ weak_below }}% (with at least {{ min_sample }} answers):</p>
+    <ul class="paper-list">
+      {% for w in weak["items"] %}
+        <li><span class="paper-title">{{ w.name }}</span>
+          <span class="paper-meta">{{ w.accuracy }}% right · {{ w.right }} of {{ w.answered }}</span></li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="paper-meta">Nothing is flagged as weak{% if not overview.answered %} — no answers in this period{% endif %}.</p>
+  {% endif %}
+
+  {# ---------------- score trend ---------------- #}
+  <h2>Score trend</h2>
+  {% if trend_svg %}
+    <figure class="viz">
+      <figcaption class="viz-title">Score in each timed test <span class="paper-meta">(last {{ points|length }})</span></figcaption>
+      {{ trend_svg }}
+      <details class="viz-table">
+        <summary>View as a table</summary>
+        <div class="table-wrap">
+          <table class="user-table">
+            <tr><th>Test</th><th>Date</th><th>Score</th><th>Out of</th><th>Percent</th></tr>
+            {% for p in points|reverse %}
+              <tr>
+                <td>{{ p.label }} <span class="paper-meta">{{ p.kind }}</span></td>
+                <td>{{ p.when.strftime("%d %b %Y") }}</td><td>{{ p.score|marks }}</td><td>{{ p.max|marks }}</td><td>{{ p.percent|marks }}%</td>
+              </tr>
+            {% endfor %}
+          </table>
+        </div>
+      </details>
+    </figure>
+  {% elif points %}
+    <p>One timed test so far: {{ points[0].percent|marks }}% in {{ points[0].label }}.</p>
+  {% else %}
+    <p class="paper-meta">No finished timed tests in this period.</p>
+  {% endif %}
+
+  {# ---------------- accuracy ---------------- #}
+  {% macro accuracy_table(groups, with_subject) %}
+    <div class="table-wrap">
+      <table class="user-table">
+        <tr><th>{{ "Topic" if with_subject else "Subject" }}</th>{% if with_subject %}<th>Subject</th>{% endif %}
+            <th>Answered</th><th>Right</th><th>Accuracy</th><th>Average time</th><th>Status</th></tr>
+        {% for g in groups %}
+          <tr>
+            <td>{{ g.name }}</td>{% if with_subject %}<td>{{ g.subject }}</td>{% endif %}
+            <td>{{ g.answered }}</td><td>{{ g.right }}</td><td>{{ g.accuracy }}%</td>
+            <td>{{ g.avg_seconds|round|int|duration if g.avg_seconds else "—" }}</td>
+            <td>{% if g.weak %}<strong>Weak</strong>{% elif g.enough %}OK{% else %}Not enough answers yet{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </table>
+    </div>
+  {% endmacro %}
+
+  <h2>Accuracy by subject</h2>
+  {% if subjects %}
+    <figure class="viz">
+      <figcaption class="viz-title">Percentage of answers right, by subject</figcaption>
+      {% if subject_svg %}
+        <div class="viz-legend">
+          <span><i class="key accent"></i> Weak — below {{ weak_below }}%</span>
+          <span><i class="key grey"></i> Everything else</span>
+        </div>
+        {{ subject_svg }}
+      {% else %}
+        <p class="paper-meta">No subject has {{ min_sample }} answers yet, so there is nothing to chart; the table shows what there is.</p>
+      {% endif %}
+      <details class="viz-table" {% if not subject_svg %}open{% endif %}><summary>View as a table</summary>{{ accuracy_table(subjects, false) }}</details>
+    </figure>
+  {% else %}
+    <p class="paper-meta">No answers in this period.</p>
+  {% endif %}
+
+  {% if topics %}
+    <h2>Accuracy by topic</h2>
+    <figure class="viz">
+      <figcaption class="viz-title">Percentage of answers right, by topic — weakest first</figcaption>
+      {% if topic_svg %}
+        <div class="viz-legend">
+          <span><i class="key accent"></i> Weak — below {{ weak_below }}%</span>
+          <span><i class="key grey"></i> Everything else</span>
+        </div>
+        {{ topic_svg }}
+      {% else %}
+        <p class="paper-meta">No topic has {{ min_sample }} answers yet, so there is nothing to chart; the table shows what there is.</p>
+      {% endif %}
+      <details class="viz-table" {% if not topic_svg %}open{% endif %}><summary>View as a table</summary>{{ accuracy_table(topics, true) }}</details>
+    </figure>
+  {% endif %}
+
+  {# ---------------- sessions ---------------- #}
+  <h2>Tests and practice sessions</h2>
+  {% if attempts %}
+    <div class="table-wrap">
+      <table class="user-table">
+        <tr><th>Started</th><th>Kind</th><th>Paper</th><th>Status</th><th>Answered</th><th>Score</th></tr>
+        {% for a in attempts %}
+          <tr>
+            <td>{{ a.started_at.strftime("%d %b %Y, %H:%M") }} UTC</td>
+            <td>{{ kinds.get(a.kind, a.kind) }}{% if a.counts_for_rank %} <span class="paper-meta">ranked</span>{% endif %}</td>
+            <td>{{ papers.get(a.paper_id) or "Mixed questions" }}</td>
+            <td>{{ {"in_progress": "In progress", "submitted": "Finished", "expired": "Time ran out"}.get(a.status, a.status) }}</td>
+            <td>{{ answered.get(a.id, 0) }}
+              <span class="paper-meta">of {{ a.total_questions }}</span></td>
+            <td>{% if a.score is not none and a.max_marks %}{{ a.score|marks }} <span class="paper-meta">of {{ a.max_marks|marks }}</span>{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% if attempt_total > attempts|length %}
+      <p class="paper-meta">Showing the latest {{ attempts|length }} of {{ attempt_total }}.</p>
+    {% endif %}
+  {% else %}
+    <p class="paper-meta">No sessions yet.</p>
+  {% endif %}
+
+  <script src="/static/charts.js"></script>
+{% endblock %}

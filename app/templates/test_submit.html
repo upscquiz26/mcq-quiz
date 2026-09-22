@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Submit test{% endblock %}
+{% block body_class %}focus-mode{% endblock %}
+{% block content %}
+  <div class="test-bar" id="test-bar"
+       data-deadline="{{ deadline_iso }}" data-server-now="{{ server_now_iso }}"
+       data-finish-url="/attempts/{{ attempt.id }}/finish">
+    <div><strong>{{ kind_label }}</strong></div>
+    <div class="timer" id="timer" role="timer" aria-label="Time remaining">--:--</div>
+    <span></span>
+  </div>
+
+  <h1>Ready to submit?</h1>
+  <p class="paper-meta">Once you submit, the test is marked and you can't change any answer.</p>
+
+  <div class="dash-grid stat-grid">
+    <div class="dash-card stat"><div class="stat-num">{{ summary.answered }}</div><div class="paper-meta">answered</div></div>
+    <div class="dash-card stat"><div class="stat-num">{{ summary.unanswered }}</div><div class="paper-meta">not answered</div></div>
+    <div class="dash-card stat"><div class="stat-num">{{ summary.marked }}</div><div class="paper-meta">marked for review</div></div>
+    <div class="dash-card stat"><div class="stat-num">{{ summary.not_visited }}</div><div class="paper-meta">not visited</div></div>
+  </div>
+
+  {% if summary.unrated %}
+    <p class="paper-meta">
+      {{ summary.unrated }} answer{{ "s were" if summary.unrated != 1 else " was" }} saved without saying how sure you were.
+      They still count; they just won't appear in your confidence analysis.
+    </p>
+  {% endif %}
+
+  <div class="submit-actions">
+    <form method="post" action="/attempts/{{ attempt.id }}/finish">
+      <button type="submit" class="big">Submit now</button>
+    </form>
+    <a href="/attempts/{{ attempt.id }}/q/{{ back_pos }}" class="btn-link secondary-link">Go back to the test</a>
+    {% if first_unanswered %}<a href="/attempts/{{ attempt.id }}/q/{{ first_unanswered }}">First unanswered</a>{% endif %}
+    {% if first_marked %}<a href="/attempts/{{ attempt.id }}/q/{{ first_marked }}">First marked for review</a>{% endif %}
+  </div>
+
+  <form id="auto-finish" method="post" action="/attempts/{{ attempt.id }}/finish"></form>
+  <script src="/static/test.js"></script>
+{% endblock %}

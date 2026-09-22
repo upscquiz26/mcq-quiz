@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Suspicious answers{% endblock %}
+{% macro dist(rows, n, popular, key) %}
+  <table class="dist">
+    <tr>{% for r in rows %}<th class="{{ 'is-key' if r.letter == key }} {{ 'is-popular' if r.letter == popular }}">{{ r.letter }}</th>{% endfor %}</tr>
+    <tr>{% for r in rows %}<td class="{{ 'is-key' if r.letter == key }} {{ 'is-popular' if r.letter == popular }}">{{ r.pct }}%<span class="paper-meta"> ({{ r.n }})</span></td>{% endfor %}</tr>
+  </table>
+{% endmacro %}
+{% block content %}
+  <div class="page-head"><div>
+    <h1>Suspicious answers</h1>
+    <p class="page-sub">Live questions where most of the strongest students chose a different option from the key. A hint that the key may be wrong — nothing changes until you decide.</p>
+  </div></div>
+
+  {% if flash %}<div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>{% endif %}
+
+  <div class="review-bar"><div class="toolbar">
+    <span>
+      <a href="?show=open" class="{{ 'on' if show == 'open' }}">Open ({{ open_total }})</a> ·
+      <a href="?show=handled" class="{{ 'on' if show == 'handled' }}">Handled</a>
+      {% if last %}<span class="paper-meta">· last analysed {{ last.strftime("%d %b %Y, %H:%M") }} UTC</span>{% endif %}
+    </span>
+    <form method="post" action="/admin/suspicious/analyse" class="inline-form"><button type="submit" class="secondary">Analyse now</button></form>
+  </div></div>
+
+  <details class="tool-box">
+    <summary>How this works</summary>
+    <ul>
+      <li>Only finished tests and practice sessions of students count, and only each student's <strong>first</strong> answer to a question.</li>
+      <li>A student counts once they have answered {{ rules.min_answers }} or more questions; their strength is their accuracy on <em>all the other</em> questions.</li>
+      <li>A question needs {{ rules.min_responders }}+ such students. The high scorers are the top {{ rules.high_share }}% of them (at least {{ rules.min_high }}).</li>
+      <li>It is raised when more than half of the high scorers chose one option that is <strong>not</strong> the key, beating the key's count by at least {{ rules.margin }} students.</li>
+    </ul>
+    <p class="paper-meta">It needs real student data, so it stays quiet on a small class. A raised question is not necessarily wrong — a genuinely tricky question can fool strong students too.</p>
+  </details>
+
+  {% for c in cards %}
+    <div class="q-card {{ 'needs-review' if c.row.status == 'open' else 'reviewed' }}">
+      <div class="q-num">
+        <a href="/review/{{ c.paper.id }}#q{{ c.q.question_number }}">{{ c.paper.title }} · Q{{ c.q.question_number }}</a>
+        {% if c.row.status == "dismissed" %}<span class="flag ok">Key kept</span>{% elif c.row.status == "sent_back" %}<span class="flag">Sent back to review</span>{% endif %}
+        {% if c.q.status != "live" %}<span class="paper-meta">(not live now)</span>{% endif %}
+        {% if c.reports %}<a class="flag" href="/admin/reports">{{ c.reports }} open student report{{ "s" if c.reports != 1 else "" }}</a>{% endif %}
+      </div>
+      {% if c.key_changed %}<div class="notice">The key was changed to {{ c.q.correct_answer }} after you handled this (it was {{ c.row.handled_key }}).</div>{% endif %}
+      {% set shown = primary(c.q) %}
+      <p class="q-text" {% if shown[0] == "hi" %}lang="hi"{% endif %}>{{ shown[1] }}</p>
+      <ul class="opt-list">
+        {% for letter, text in [("A", shown[2][0]), ("B", shown[2][1]), ("C", shown[2][2]), ("D", shown[2][3])] %}
+          <li class="opt static {{ 'correct' if letter == c.q.correct_answer else ('wrong' if letter == c.row.popular_answer) }}">
+            <span class="opt-letter">{{ letter }}</span><span class="opt-text">{{ text }}</span>
+            {% if letter == c.q.correct_answer %}<span class="opt-tag">Key</span>{% elif letter == c.row.popular_answer %}<span class="opt-tag">Most high scorers chose this</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+      <div class="dist-grid">
+        <div><strong>{{ c.row.high_n }} high scorers</strong>{{ dist(c.high, c.row.high_n, c.row.popular_answer, c.q.correct_answer) }}</div>
+        <div><strong>All {{ c.row.all_n }} students counted</strong>{{ dist(c.everyone, c.row.all_n, c.row.popular_answer, c.q.correct_answer) }}</div>
+      </div>
+      {% if c.row.status == "open" %}
+        <div class="inline-form dup-actions">
+          <form method="post" action="/admin/suspicious/{{ c.row.id }}/dismiss"><button type="submit" class="secondary">The key is right</button></form>
+          {% if c.q.status in ["live", "verified"] %}
+            <form method="post" action="/admin/suspicious/{{ c.row.id }}/send-back"
+                  onsubmit="return confirm('Send this question back to review? Students stop seeing it until you confirm it again.');">
+              <button type="submit">Check it: send back to review</button></form>
+          {% endif %}
+          <a class="btn-link secondary-link" href="/review/{{ c.paper.id }}#q{{ c.q.question_number }}">Open in review</a>
+        </div>
+      {% endif %}
+    </div>
+  {% else %}
+    <p class="empty-state">{% if show == "open" %}Nothing suspicious. Press <strong>Analyse now</strong> once students have taken some tests.{% else %}Nothing has been handled yet.{% endif %}</p>
+  {% endfor %}
+{% endblock %}

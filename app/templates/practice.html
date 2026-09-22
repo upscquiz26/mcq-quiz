@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Practice{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <div>
+      <h1>Practice</h1>
+      <p class="page-sub">Choose what to practise. Untimed, with the answer and explanation after every question.</p>
+    </div>
+  </div>
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  {% if unfinished %}
+    <div class="dash-card resume-card">
+      <h2>Pick up where you left off</h2>
+      <ul class="paper-list">
+        {% for a in unfinished %}
+          <li>
+            <a href="/attempts/{{ a.id }}">{{ kind_labels.get(a.kind, a.kind) }}</a>
+            <div class="paper-meta">
+              {{ answered_count(a) }} of {{ a.responses|length }} answered · started {{ a.started_at.strftime("%d %b, %H:%M") }} UTC{{ time_left(a) }}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <h2>Topic practice</h2>
+  <p class="paper-meta">Untimed. After each answer you see the correct answer and the explanation straight away.</p>
+
+  {% if not total_available %}
+    <div class="empty-state">No questions are available yet. Please check back soon.</div>
+  {% else %}
+    <form method="post" action="/practice/start" id="practice-form" class="practice-form form-card">
+      <div class="row wrap">
+        <div>
+          <label for="source_type">Source</label>
+          <select id="source_type" name="source_type">
+            <option value="">Any</option>
+            {% for s in options.sources %}<option value="{{ s.value }}">{{ s.label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="year">Year</label>
+          <select id="year" name="year">
+            <option value="">Any</option>
+            {% for y in options.years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="difficulty">Difficulty</label>
+          <select id="difficulty" name="difficulty">
+            <option value="">Any</option>
+            {% for d in options.difficulties %}<option value="{{ d }}">{{ d|capitalize }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="row wrap">
+        <div>
+          <label for="subject_id">Subject</label>
+          <select id="subject_id" name="subject_id">
+            <option value="">Any</option>
+            {% for s in options.subjects %}<option value="{{ s.id }}">{{ s.name }} ({{ s.count }})</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="topic_id">Topic</label>
+          <select id="topic_id" name="topic_id">
+            <option value="">Any</option>
+            {% for group, topics in options.topics|groupby("subject") %}
+              <optgroup label="{{ group }}">
+                {% for t in topics %}<option value="{{ t.id }}">{{ t.name }} ({{ t.count }})</option>{% endfor %}
+              </optgroup>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <label class="check-line">
+        <input type="checkbox" name="unattempted" value="1">
+        Only questions I haven't answered yet
+      </label>
+
+      <div class="row wrap start-row">
+        <div>
+          <label for="count">How many questions</label>
+          <select id="count" name="count">
+            {% for n in count_choices %}<option value="{{ n }}" {% if n == default_count %}selected{% endif %}>{{ n }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="match-box">
+          <span id="match-count" class="paper-meta" aria-live="polite">{{ total_available }} question{{ "s" if total_available != 1 else "" }} available</span>
+        </div>
+      </div>
+
+      <button type="submit" class="big">Start practising</button>
+    </form>
+  {% endif %}
+
+  {% if recent %}
+    <h2>Recent sessions</h2>
+    <ul class="paper-list">
+      {% for a in recent %}
+        <li>
+          <a href="/attempts/{{ a.id }}/result">{{ kind_labels.get(a.kind, a.kind) }} · {{ a.completed_at.strftime("%d %b %Y") if a.completed_at else "" }}</a>
+          <div class="paper-meta">
+            {{ a.correct_count or 0 }} correct of {{ answered_count(a) }} answered · {{ a.skipped_count or 0 }} skipped
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <script src="/static/practice.js"></script>
+{% endblock %}

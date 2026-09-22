@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}Results{% endblock %}
+{% block content %}
+  <h1>{{ kind_label }} — results</h1>
+  <p class="paper-meta">
+    {{ attempt.started_at.strftime("%d %b %Y, %H:%M") }} UTC ·
+    {{ attempt.total_questions }} question{{ "s" if attempt.total_questions != 1 else "" }}
+    {% if timed %}· time taken {{ attempt.time_taken_seconds|duration }}{% endif %}
+  </p>
+
+  {% if attempt.status == "expired" %}
+    <div class="notice">Time ran out, so the test was submitted for you with the answers you had saved.</div>
+  {% endif %}
+
+  {% if timed %}
+    <div class="score-card">
+      <div class="paper-meta">Your score</div>
+      <div class="score-num">{{ attempt.score|marks }} <span class="score-of">/ {{ attempt.max_marks|marks }}</span></div>
+      <div class="paper-meta">
+        +{{ gained|marks }} for right answers · −{{ lost|marks }} for wrong answers · no marks lost for the {{ attempt.skipped_count }} you skipped
+      </div>
+    </div>
+  {% endif %}
+
+  {% if timed and board_url %}
+    <p>
+      {% if rank %}
+        Leaderboard: you are <strong>#{{ rank.you.rank }}</strong> of {{ rank.participants }} on this test.
+      {% elif attempt.rank_key and not attempt.counts_for_rank %}
+        This wasn't your first attempt, so it isn't ranked — your first attempt is the one that counts.
+      {% endif %}
+      {% if rank or (attempt.rank_key and not attempt.counts_for_rank) %}<a href="{{ board_url }}">See the leaderboard</a>{% endif %}
+    </p>
+  {% endif %}
+
+  <div class="dash-grid stat-grid">
+    <div class="dash-card stat"><div class="stat-num">{{ attempt.correct_count }}</div><div class="paper-meta">correct</div></div>
+    <div class="dash-card stat"><div class="stat-num">{{ attempt.wrong_count }}</div><div class="paper-meta">wrong</div></div>
+    <div class="dash-card stat"><div class="stat-num">{{ attempt.skipped_count }}</div><div class="paper-meta">skipped</div></div>
+    <div class="dash-card stat">
+      <div class="stat-num">{{ accuracy ~ "%" if accuracy is not none else "—" }}</div>
+      <div class="paper-meta">accuracy on answered</div>
+    </div>
+  </div>
+  <p class="paper-meta">
+    You attempted {{ answered }} of {{ attempt.total_questions }} questions
+    ({{ attempt_rate ~ "%" if attempt_rate is not none else "—" }} attempt rate).
+  </p>
+
+  <p>
+    <a href="{{ '/tests' if timed else '/practice' }}" class="btn-link">{{ "Back to tests" if timed else "Practise again" }}</a>
+  </p>
+
+  {# ---------------- guessing report ---------------- #}
+  <section class="report-card" id="guessing">
+    <h2>Guessing report</h2>
+    {% if has_confidence %}
+      <table class="user-table conf-table">
+        <tr><th>You said</th><th>Answered</th><th>Right</th><th>Accuracy</th><th>Marks</th></tr>
+        {% for key, label in (("sure", "Sure"), ("guessed", "Guessed"), ("no_idea", "No idea"), ("unrated", "Not rated")) %}
+          {% set lv = guessing.levels[key] %}
+          {% if lv.answered %}
+            <tr>
+              <td>{{ label }}</td><td>{{ lv.answered }}</td><td>{{ lv.right }}</td>
+              <td>{{ lv.accuracy ~ "%" if lv.accuracy is not none else "—" }}</td><td>{{ lv.marks|marks }}</td>
+            </tr>
+          {% endif %}
+        {% endfor %}
+      </table>
+
+      {% if guessing.shaky_answers %}
+        <p>
+          Your {{ guessing.shaky_answers }} “guessed” and “no idea” answer{{ "s" if guessing.shaky_answers != 1 else "" }}
+          {% if guessing.helped %}added <strong>{{ guessing.shaky_marks|marks }}</strong> mark{{ "s" if guessing.shaky_marks != 1 else "" }} overall.
+          {% elif guessing.cost %}cost you <strong>{{ (-guessing.shaky_marks)|marks }}</strong> mark{{ "s" if guessing.shaky_marks != -1 else "" }} overall.
+          {% else %}netted <strong>0</strong> marks overall.{% endif %}
+        </p>
+        <p class="report-line">
+          If you had skipped them, your marks would have been <strong>{{ guessing.score_if_skipped|marks }}</strong>
+          instead of <strong>{{ guessing.actual_score|marks }}</strong>.
+        </p>
+        <p class="paper-meta">
+          This is just information, not a rule: guessing can pay off when you can rule out an option or two.
+        </p>
+      {% else %}
+        <p>You didn't mark any answer as a guess or “no idea”, so there is nothing to compare.</p>
+      {% endif %}
+    {% else %}
+      <p class="paper-meta">
+        No answers here were rated Sure / Guessed / No idea, so there's nothing to report. Rating each answer
+        is what makes this report (and your mistake reasons) possible.
+      </p>
+    {% endif %}
+  </section>
+
+  {# ---------------- mistake reasons ---------------- #}
+  {% if reason_counts %}
+    <section class="report-card" id="reasons">
+      <h2>Why the wrong answers went wrong</h2>
+      <ul class="reason-list">
+        {% for rc in reason_counts %}
+          <li>
+            <span class="chip">{{ rc.label }}</span> <strong>{{ rc.count }}</strong>
+            <div class="paper-meta">{{ rc.help }}</div>
+          </li>
+        {% endfor %}
+      </ul>
+      <p class="paper-meta">
+        These are suggestions from how sure you were and how long you took. Open any wrong answer below to change its reason.
+        <a href="?show=wrong#questions">Show my wrong answers</a>
+      </p>
+    </section>
+  {% endif %}
+
+  {# ---------------- timed tests: subject breakdown and attempt analysis ---------------- #}
+  {% if timed and subjects %}
+    <section class="report-card" id="subjects">
+      <h2>By subject</h2>
+      <div class="table-wrap">
+        <table class="user-table">
+          <tr><th>Subject</th><th>Questions</th><th>Attempted</th><th>Right</th><th>Wrong</th><th>Skipped</th><th>Accuracy</th><th>Marks</th></tr>
+          {% for s in subjects %}
+            <tr>
+              <td>{{ s.subject }}</td><td>{{ s.total }}</td><td>{{ s.answered }}</td><td>{{ s.right }}</td>
+              <td>{{ s.wrong }}</td><td>{{ s.skipped }}</td>
+              <td>{{ s.accuracy ~ "%" if s.accuracy is not none else "—" }}</td><td>{{ s.marks|marks }}</td>
+            </tr>
+          {% endfor %}
+        </table>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if timed and worth %}
+    <section class="report-card" id="attempt-analysis">
+      <h2>Should you have attempted more?</h2>
+      {% if worth.break_even_percent is not none %}
+        <p>
+          With this marking scheme, an answer pays off on average once you're right more than
+          <strong>{{ worth.break_even_percent }}%</strong> of the time. Your accuracy in this test was
+          <strong>{{ worth.your_accuracy_percent }}%</strong>.
+        </p>
+      {% endif %}
+      {% if worth.worth %}
+        <p>
+          Judging by your own record, about <strong>{{ worth.worth }}</strong> of the {{ worth.skipped }} questions you
+          skipped were worth attempting — an estimated <strong>+{{ worth.expected_gain|marks }}</strong> marks in total.
+        </p>
+        <details class="tool-box">
+          <summary>Which questions</summary>
+          <ul class="paper-list">
+            {% for subject, items in worth["items"]|groupby("subject") %}
+              <li>
+                <strong>{{ subject }}</strong>:
+                {% for i in items %}<a href="/attempts/{{ attempt.id }}/q/{{ i.position }}">Q{{ i.position }}</a>{{ ", " if not loop.last }}{% endfor %}
+              </li>
+            {% endfor %}
+          </ul>
+        </details>
+        <p class="paper-meta">
+          This is an estimate: it assumes a skipped question is as easy for you as the average one in its subject.
+          It isn't a promise, and skipping can be the right call.
+        </p>
+      {% else %}
+        <p>Judging by your own record, the {{ worth.skipped }} question{{ "s" if worth.skipped != 1 else "" }} you skipped weren't worth the risk.</p>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  {# ---------------- question by question ---------------- #}
+  <h2 id="questions">Question by question</h2>
+  <p class="filter-row">
+    {% for key, label in filters.items() %}
+      <a href="?show={{ key }}#questions" class="{{ 'on' if show == key }}">{{ label }}</a>{{ " · " if not loop.last }}
+    {% endfor %}
+  </p>
+  <ul class="result-list">
+    {% for r in rows %}
+      {% set q = questions[r.question_id] %}
+      <li>
+        <a href="/attempts/{{ attempt.id }}/q/{{ r.position }}" class="result-row">
+          <span class="pal {{ 'correct' if r.is_correct else ('wrong' if r.selected_answer else 'skipped') }}">
+            {{ r.position }}
+          </span>
+          <span class="result-text">
+            {% if r.question_id in visible %}{{ list_text(q, user_language(request))|truncate(110) }}{% else %}<em>This question is no longer available.</em>{% endif %}
+            {% if r.selected_answer and r.is_correct == false %}
+              <span class="chip small">{{ reason_labels[r.mistake_reason] }}</span>
+            {% endif %}
+          </span>
+          <span class="paper-meta">
+            {% if r.selected_answer %}
+              {{ "correct" if r.is_correct else "wrong" }}{% if timed %} · {{ r.marks_awarded|marks }}{% endif %}
+            {% else %}skipped{% endif %}
+          </span>
+        </a>
+      </li>
+    {% else %}
+      <li class="empty-state">Nothing to show for this filter.</li>
+    {% endfor %}
+  </ul>
+{% endblock %}

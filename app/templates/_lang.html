@@ -1,0 +1,63 @@
+{#
+  Showing a question in English, Hindi or both.
+
+  Every language a question has is put in the page, each element tagged with the display modes it belongs to (data-modes). The page's
+  scope element carries data-lang="en|hi|both" and the stylesheet hides what doesn't belong — so switching language is a change of that
+  attribute in the browser: no reload, and nothing about the student's answer, timer or position is touched.
+  See language.modes() for the rules (fallback to the other language with a note; "both" adds nothing for a missing language).
+#}
+
+{% macro question_text(q) %}
+  {% set m = lang_modes(q) %}
+  <div class="q-text-wrap">
+    {% if q.text and q.text|trim %}<p class="q-text lang-el" data-modes="{{ m.text_en }}">{{ q.text }}</p>{% endif %}
+    {% if q.question_hi %}<p class="q-text lang-el" lang="hi" data-modes="{{ m.text_hi }}">{{ q.question_hi }}</p>{% endif %}
+    {% if m.note_hi %}<p class="paper-meta lang-el lang-note" data-modes="hi">Hindi not available for this question</p>{% endif %}
+    {% if m.note_en %}<p class="paper-meta lang-el lang-note" data-modes="en">English not available for this question</p>{% endif %}
+  </div>
+{% endmacro %}
+
+{% macro option_text(q, letter) %}
+  {% set m = lang_modes(q) %}
+  {% set en = q|attr("option_" ~ (letter|lower)) %}
+  {% set hi = q|attr("option_" ~ (letter|lower) ~ "_hi") %}
+  <span class="opt-text">
+    {% if en and en|trim %}<span class="lang-el" data-modes="{{ m.text_en }}">{{ en }}</span>{% endif %}
+    {% if hi %}<span class="lang-el" lang="hi" data-modes="{{ m.text_hi }}">{{ hi }}</span>{% endif %}
+  </span>
+{% endmacro %}
+
+{% macro explanation(q, label_en, label_hi) %}
+  {% set m = lang_modes(q) %}
+  {% if q.explanation or q.explanation_hi %}
+    {% if q.explanation %}
+      <div class="explanation-box lang-el" data-modes="{{ m.expl_en }}">
+        <div class="paper-meta">Explanation · {{ label_en }}</div>
+        <div class="explanation-text">{{ q.explanation }}</div>
+      </div>
+    {% endif %}
+    {% if q.explanation_hi %}
+      <div class="explanation-box lang-el" lang="hi" data-modes="{{ m.expl_hi }}">
+        <div class="paper-meta">Explanation (Hindi) · {{ label_hi }}</div>
+        <div class="explanation-text">{{ q.explanation_hi }}</div>
+      </div>
+    {% endif %}
+    {% if m.expl_note_hi %}<div class="paper-meta lang-el lang-note" data-modes="hi">Hindi explanation not available for this question</div>{% endif %}
+    {% if m.expl_note_en %}<div class="paper-meta lang-el lang-note" data-modes="en">English explanation not available for this question</div>{% endif %}
+  {% else %}
+    <div class="paper-meta">No explanation is available for this question.</div>
+  {% endif %}
+{% endmacro %}
+
+{# The quick switch. Without JavaScript the buttons post the form (and the page reloads); with it lang.js flips data-lang on the scope. #}
+{% macro toggle(lang, next_url) %}
+  <form method="post" action="/account/language" class="lang-toggle" data-save-url="/account/language/save" role="group" aria-label="Language">
+    <input type="hidden" name="next" value="{{ next_url }}">
+    <span class="sr-only lang-live" aria-live="polite"></span>
+    {% for value, label in lang_labels.items() %}
+      <button type="submit" name="language" value="{{ value }}" class="lang-btn {{ 'on' if lang == value }}" aria-pressed="{{ 'true' if lang == value else 'false' }}"
+              title="{{ {'en': 'Show questions in English', 'hi': 'Show questions in Hindi', 'both': 'Show English and Hindi together'}[value] }}"
+              {% if value == "hi" %}lang="hi"{% endif %}>{{ label }}</button>
+    {% endfor %}
+  </form>
+{% endmacro %}

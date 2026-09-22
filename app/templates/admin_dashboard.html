@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Admin dashboard{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <div>
+      <h1>Admin dashboard</h1>
+      <p class="page-sub">What needs you today, and how the platform is being used.</p>
+    </div>
+    <div class="page-actions">
+      <a href="/upload" class="btn-link">Upload paper</a>
+      <a href="/admin/import/json" class="btn-link secondary-link">Import JSON</a>
+    </div>
+  </div>
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  {# ---------------- headline numbers ---------------- #}
+  <div class="kpi-grid">
+    <a class="kpi {{ 'kpi-warm' if pending }}" href="/admin/users">
+      <span class="kpi-icon"><span class="icon i-users" aria-hidden="true"></span></span>
+      <span class="kpi-value">{{ pending }}</span>
+      <span class="kpi-label">waiting for approval</span>
+      <span class="kpi-note">{{ approved }} active · {{ deactivated }} deactivated</span>
+    </a>
+    <a class="kpi {{ 'kpi-blue' if papers_awaiting }}" href="/">
+      <span class="kpi-icon"><span class="icon i-file" aria-hidden="true"></span></span>
+      <span class="kpi-value">{{ to_confirm_total }}</span>
+      <span class="kpi-label">questions to confirm</span>
+      <span class="kpi-note">{{ papers_awaiting }} paper{{ "s" if papers_awaiting != 1 else "" }} awaiting review</span>
+    </a>
+    <a class="kpi {{ 'kpi-red' if open_reports }}" href="/admin/reports">
+      <span class="kpi-icon"><span class="icon i-flag" aria-hidden="true"></span></span>
+      <span class="kpi-value">{{ open_reports }}</span>
+      <span class="kpi-label">open question reports</span>
+      <span class="kpi-note">from students</span>
+    </a>
+    <a class="kpi" href="/admin/performance">
+      <span class="kpi-icon"><span class="icon i-trend" aria-hidden="true"></span></span>
+      <span class="kpi-value">{{ active_students }}</span>
+      <span class="kpi-label">students active this week</span>
+      <span class="kpi-note">{{ tests_this_week }} timed test{{ "s" if tests_this_week != 1 else "" }} finished</span>
+    </a>
+    <a class="kpi" href="/">
+      <span class="kpi-icon"><span class="icon i-practice" aria-hidden="true"></span></span>
+      <span class="kpi-value">{{ live_questions }}</span>
+      <span class="kpi-label">questions live</span>
+      <span class="kpi-note"><strong>{{ papers_published }}</strong> published · <strong>{{ papers_draft }}</strong> not published</span>
+    </a>
+  </div>
+
+  <div class="dash-grid two-col">
+    {# ---------------- needs attention ---------------- #}
+    <section class="dash-card">
+      <div class="card-title"><span class="icon-badge warm"><span class="icon i-alert" aria-hidden="true"></span></span><h2>Needs your attention</h2></div>
+      {% if attention %}
+        <ul class="attention-list">
+          {% for a in attention %}
+            <li class="tone-{{ a.tone }}">
+              <span class="icon-badge {{ {'warm': 'warm', 'red': 'red', 'green': 'green'}.get(a.tone, '') }}"><span class="icon i-{{ a.icon }}" aria-hidden="true"></span></span>
+              <span class="attention-text">{{ a.text }}</span>
+              <a href="{{ a.href }}" class="btn-link secondary-link">{{ a.action }}</a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="empty-state">Nothing needs your attention. Nice.</p>
+      {% endif %}
+    </section>
+
+    {# ---------------- recent activity ---------------- #}
+    <section class="dash-card">
+      <div class="card-title"><span class="icon-badge"><span class="icon i-audit" aria-hidden="true"></span></span><h2>Recent activity</h2></div>
+      {% if recent %}
+        <ul class="activity-list">
+          {% for e in recent %}
+            <li>
+              <span class="activity-dot" aria-hidden="true"></span>
+              <span><strong>{{ e.who }}</strong> · {{ e.what }}<br><span class="paper-meta">{{ e.at.strftime("%d %b, %H:%M") }} UTC</span></span>
+            </li>
+          {% endfor %}
+        </ul>
+        <p class="paper-meta"><a href="/admin/audit">Open the full audit log →</a></p>
+      {% else %}
+        <p class="empty-state">Nothing has happened yet.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  {# ---------------- settings and shortcuts ---------------- #}
+  <h2>Student features</h2>
+  <div class="dash-grid">
+    <section class="dash-card">
+      <div class="card-title"><span class="icon-badge"><span class="icon i-trend" aria-hidden="true"></span></span><h2>User performance</h2>
+        {% if performance_on %}<span class="flag ok">On</span>{% else %}<span class="flag">Off</span>{% endif %}
+      </div>
+      <p class="paper-meta">
+        When on, you can see how each user is doing (read-only), and every user sees this notice in their profile:
+        “Your admin can view your practice results.” Turning it off blocks the pages below and hides that notice.
+      </p>
+      {% if performance_on %}<p><a href="/admin/performance" class="btn-link">See how users are doing</a></p>{% endif %}
+      <form method="post" action="/admin/settings/user-performance">
+        <input type="hidden" name="enabled" value="{{ '0' if performance_on else '1' }}">
+        <button type="submit" class="secondary">Turn {{ "off" if performance_on else "on" }}</button>
+      </form>
+    </section>
+
+    <section class="dash-card">
+      <div class="card-title"><span class="icon-badge"><span class="icon i-trophy" aria-hidden="true"></span></span><h2>Leaderboard</h2>
+        {% if leaderboard_on %}<span class="flag ok">On</span>{% else %}<span class="flag">Off</span>{% endif %}
+      </div>
+      <p class="paper-meta">When off, students see no leaderboards at all. Turning it back on restores everything.</p>
+      <form method="post" action="/admin/settings/leaderboard">
+        <input type="hidden" name="enabled" value="{{ '0' if leaderboard_on else '1' }}">
+        <button type="submit" class="secondary">Turn {{ "off" if leaderboard_on else "on" }}</button>
+      </form>
+    </section>
+
+    <section class="dash-card">
+      <div class="card-title"><span class="icon-badge red"><span class="icon i-flag" aria-hidden="true"></span></span><h2>Wrong-answer reports</h2></div>
+      <p>
+        {% if open_reports %}<strong>{{ open_reports }}</strong> open{% else %}None open.{% endif %}
+      </p>
+      <p class="paper-meta">Students can report a question once they've been shown its answer.</p>
+      <p><a href="/admin/reports" class="btn-link secondary-link">{{ "Review reports" if open_reports else "See the queue" }}</a></p>
+    </section>
+
+    <section class="dash-card">
+      <div class="card-title"><span class="icon-badge"><span class="icon i-shield" aria-hidden="true"></span></span><h2>Safety</h2></div>
+      <p class="paper-meta">Every change is recorded, and a backup is taken before each import.</p>
+      <p><a href="/admin/audit">Audit log</a> · <a href="/admin/backups">Backups</a> · <a href="/quarantine">Quarantine</a></p>
+    </section>
+
+    <section class="dash-card">
+      <div class="card-title"><span class="icon-badge"><span class="icon i-users" aria-hidden="true"></span></span><h2>Accounts</h2></div>
+      <p>
+        <strong>{{ pending }}</strong> waiting for approval ·
+        <strong>{{ approved }}</strong> active ·
+        <strong>{{ deactivated }}</strong> deactivated
+      </p>
+      <p><a href="/admin/users" class="btn-link secondary-link">Manage users</a></p>
+    </section>
+
+    <section class="dash-card">
+      <div class="card-title"><span class="icon-badge"><span class="icon i-file" aria-hidden="true"></span></span><h2>Papers</h2></div>
+      <p><strong>{{ papers_published }}</strong> published · <strong>{{ papers_draft }}</strong> not published</p>
+      <p class="paper-meta">Students only see published papers. Publish from a paper's review page.</p>
+      <p><a href="/" class="btn-link secondary-link">All papers</a> <a href="/upload" class="btn-link secondary-link">Upload</a></p>
+    </section>
+  </div>
+{% endblock %}

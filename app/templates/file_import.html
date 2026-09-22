@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Import a file{% endblock %}
+{% block content %}
+  <div class="page-head"><div><h1>Import questions from a file</h1>
+    <p class="page-sub">A spreadsheet, a Word document or page pictures — checked first, reviewed before students see anything.</p></div></div>
+
+  {% if flash %}<div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>{% endif %}
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+  <p>Everything is saved as <strong>needs review</strong>. There is no original page to compare with (except for pictures, which are read like a scanned paper),
+    so check the questions against your own source. First you get a report; nothing is saved until you say so.</p>
+
+  <div class="dash-card">
+    <h2>Which file?</h2>
+    <ul>
+      <li><strong>Spreadsheet (.csv, .xlsx)</strong> — one question per row. You say which column is which (the app guesses from the headers and remembers your choice for the next file with the same headers). Answers must be the letters A–D.</li>
+      <li><strong>Word document (.docx)</strong> — numbered questions typed as text (<code>1.</code>, <code>2.</code> …) with options <code>(a)</code>–<code>(d)</code>, and optionally an <code>Answer: (b)</code> line under each question or an answer key at the end. Word's automatic numbering isn't stored in the text, so type the numbers.</li>
+      <li><strong>Pictures (.png, .jpg …)</strong> — photos or screenshots of the pages, in page order. They are read by OCR like a scanned paper, so Tesseract must be installed.</li>
+    </ul>
+  </div>
+
+  <form method="post" enctype="multipart/form-data" action="/admin/import/file/read">
+    <div>
+      <label for="target">Import into</label>
+      <select id="target" name="target">
+        <option value="new">A new paper</option>
+        {% for p in papers %}<option value="{{ p.id }}">Add to: {{ p.title }} (spreadsheets and documents only)</option>{% endfor %}
+      </select>
+      <div class="paper-meta">Adding to a paper only fills question numbers it doesn't have yet; existing questions are never overwritten.</div>
+    </div>
+    <div>
+      <label for="files">File{{ "s" }}</label>
+      <input type="file" id="files" name="files" multiple required accept=".csv,.xlsx,.xlsm,.docx,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff">
+      <div class="paper-meta">Several files only for pictures (they become pages 1, 2, 3 … in the order you choose them, usually alphabetical).</div>
+    </div>
+    <button type="submit">Check the file</button>
+  </form>
+{% endblock %}

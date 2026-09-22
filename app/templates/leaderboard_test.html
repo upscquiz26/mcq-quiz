@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_board.html" import summary, test_table %}
+{% block title %}Leaderboard — {{ paper.title }}{% endblock %}
+{% block content %}
+  <p class="paper-meta"><a href="/leaderboard">← Leaderboard</a></p>
+  <h1>{{ paper.title }}</h1>
+  <p class="paper-meta">{{ subject.name ~ " section" if subject else "Full-length test" }} · first attempts only · ties broken by less time</p>
+
+  {% if board.participants %}
+    {{ summary(board, me) }}
+    {{ test_table(board, duration) }}
+    <p class="paper-meta">Showing the top {{ top_n }} and your own place.</p>
+  {% else %}
+    <div class="empty-state">Nobody has finished this test yet.</div>
+  {% endif %}
+
+  {% if not board.you %}
+    <p>
+      {% if my_first %}
+        {# they have an attempt, but it isn't on the board: still running, or not counted #}
+        {% if my_first.status == "in_progress" %}Your attempt is still open — you appear here once you finish it.
+        {% else %}You've taken this test but aren't on the board.{% endif %}
+      {% else %}
+        You haven't taken this test yet.
+        <a href="{{ '/tests' }}" class="btn-link">Go to Tests</a>
+      {% endif %}
+    </p>
+  {% endif %}
+{% endblock %}

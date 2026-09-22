@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Import JSON{% endblock %}
+{% block content %}
+  <div class="page-head"><div><h1>Import questions from JSON</h1><p class="page-sub">Bring in questions another AI has read from a paper — reviewed before students see them.</p></div></div>
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+  {% if error %}
+    <div class="error">{{ error }}</div>
+  {% endif %}
+
+  <p>
+    Use this when another AI has read a paper for you and produced JSON. <strong>That JSON isn't trusted:</strong> every question
+    is saved as <em>needs review</em>, labelled “AI-supplied, unverified”, and can't reach a student until you have checked and
+    confirmed it. First you get a report (nothing is saved); then you decide whether to import.
+  </p>
+
+  <h2>1. Get the JSON from an AI</h2>
+  <ol>
+    <li>Click <strong>Copy prompt</strong> and paste it into the other AI, then attach the question paper PDF.</li>
+    <li>It should convert the whole paper. If a reply is too long for it to finish, it stops after a complete question and you say “next” for the rest.</li>
+    <li>Save each reply as a <code>.json</code> file, or paste it below. A closing line such as “Covered questions 1 to 25.” is fine.</li>
+  </ol>
+  <p class="row" style="gap:8px">
+    <button type="button" id="copy-prompt" class="secondary">Copy prompt</button>
+    <a class="btn-link secondary-link" href="/admin/import/json/prompt">Download prompt</a>
+    <a class="btn-link secondary-link" href="/admin/import/json/template">Download template</a>
+    <span id="copy-result" class="paper-meta" role="status"></span>
+  </p>
+  <details class="tool-box">
+    <summary>Show the prompt</summary>
+    <textarea id="prompt-text" readonly rows="18" style="font-family:Consolas,monospace;font-size:13px">{{ prompt }}</textarea>
+    <div class="paper-meta">If the button doesn't work, click in the box, press Ctrl+A then Ctrl+C.</div>
+  </details>
+
+  <h2>2. Check it (nothing is saved yet)</h2>
+  <form method="post" enctype="multipart/form-data" action="/admin/import/json/validate">
+    <div>
+      <label for="target">Import into</label>
+      <select id="target" name="target">
+        <option value="new">A new paper</option>
+        {% for p in papers %}<option value="{{ p.id }}">Add to: {{ p.title }}</option>{% endfor %}
+      </select>
+      <div class="paper-meta">
+        Adding to a paper skips question numbers it already has. Only questions still waiting for review can be replaced, and only if you ask.
+      </div>
+    </div>
+    <div>
+      <label for="files">JSON files (one per part)</label>
+      <input type="file" id="files" name="files" accept=".json,application/json,.txt" multiple>
+    </div>
+    <div>
+      <label for="pasted">…or paste JSON</label>
+      <textarea id="pasted" name="pasted" rows="8" style="font-family:Consolas,monospace;font-size:13px"
+                placeholder='{ "schema_version": 1, "paper": { … }, "questions": [ … ] }'></textarea>
+    </div>
+    <div>
+      <label for="pdf_file">The question PDF (optional)</label>
+      <input type="file" id="pdf_file" name="pdf_file" accept="application/pdf">
+      <div class="paper-meta">If you give it, each question's <code>page</code> number lets the review screen show that original page beside it (for you only, never for students).</div>
+    </div>
+    <label class="check-line">
+      <input type="checkbox" name="later_wins" value="true">
+      If two parts give the same question number with different content, let the later part win (otherwise that's an error)
+    </label>
+    <button type="submit">Validate</button>
+  </form>
+
+  <p class="paper-meta" style="margin-top:20px">
+    There is no limit on the number of parts, questions or file size. A backup of the database is made automatically before every import. Topics in the JSON are only used if they already exist under that subject; subjects outside the fixed
+    list are left blank.
+  </p>
+
+  <script>
+    (function () {
+      var button = document.getElementById("copy-prompt");
+      var box = document.getElementById("prompt-text");
+      var out = document.getElementById("copy-result");
+      function done(ok) { out.textContent = ok ? "Copied." : "Couldn't copy — open “Show the prompt” and copy it by hand."; }
+      button.addEventListener("click", function () {
+        var text = box.value;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(fallback()); });
+        } else { done(fallback()); }
+      });
+      function fallback() {
+        var details = box.closest("details"); if (details) details.open = true;
+        box.select();
+        try { return document.execCommand("copy"); } catch (e) { return false; }
+      }
+    })();
+  </script>
+{% endblock %}

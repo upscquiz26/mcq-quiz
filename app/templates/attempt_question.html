@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}{{ kind_label }} — Q{{ position }}{% endblock %}
+{% block content %}
+  {% from "_lang.html" import question_text, option_text, explanation, toggle %}
+  {% set lang = user_language(request) %}
+  <div class="lang-scope" data-lang="{{ lang }}">
+  <div class="practice-head">
+    <div>
+      <strong>{{ kind_label }}</strong>
+      <span class="paper-meta">· Question {{ position }} of {{ total }} · {{ answered }} answered{% if finished %} · finished{% endif %}</span>
+    </div>
+    {% if show_toggle %}{{ toggle(lang, "/attempts/" ~ attempt.id ~ "/q/" ~ position) }}{% endif %}
+    <a href="/practice" class="paper-meta">← Practice home</a>
+  </div>
+
+  <div class="progress" aria-hidden="true"><div class="progress-bar" style="width: {{ (100 * answered / total)|round|int }}%"></div></div>
+
+  <details class="palette">
+    <summary>All questions</summary>
+    <div class="palette-grid">
+      {% for p in palette %}
+        <a href="/attempts/{{ attempt.id }}/q/{{ p.pos }}"
+           class="pal {{ p.state }} {{ 'current' if p.pos == position }}"
+           aria-label="Question {{ p.pos }}: {{ p.state }}">{{ p.pos }}</a>
+      {% endfor %}
+    </div>
+    <div class="paper-meta palette-key">
+      <span class="pal correct">✓</span> right ·
+      <span class="pal wrong">✗</span> wrong ·
+      <span class="pal unanswered">·</span> not answered
+    </div>
+  </details>
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  <div class="q-card practice-card">
+    {% if not available %}
+      <p class="empty-state">This question is no longer available.</p>
+
+    {% else %}
+      {{ question_text(question) }}
+
+      {% if question.has_image and question.source_image_path %}
+        <div class="q-snapshot">
+          <img src="/media/{{ question.paper_id }}/{{ question.source_image_path }}" alt="The question as printed">
+        </div>
+      {% endif %}
+
+      {% if reveal %}
+        <ul class="opt-list">
+          {% for letter, text in options %}
+            {% set is_answer = letter == question.correct_answer %}
+            {% set is_mine = letter == response.selected_answer %}
+            <li class="opt static {{ 'correct' if is_answer }} {{ 'wrong' if is_mine and not is_answer }}">
+              <span class="opt-letter">{{ letter }}</span>
+              {{ option_text(question, letter) }}
+              {% if is_answer %}<span class="opt-tag">Correct answer</span>
+              {% elif is_mine %}<span class="opt-tag">Your answer</span>{% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+
+        {% if response.selected_answer %}
+          {% if response.is_correct %}
+            <div class="verdict good">Correct.</div>
+          {% else %}
+            <div class="verdict bad">Not this time — the answer is {{ question.correct_answer }}.</div>
+          {% endif %}
+          {% if response.confidence.value != "skipped" %}
+            <div class="paper-meta">You said: {{ response.confidence.value.replace("_", " ") }}.</div>
+          {% endif %}
+          {% if response.marks_awarded is not none and attempt.kind != "topic" %}
+            <div class="paper-meta">Marks: {{ response.marks_awarded|marks }}</div>
+          {% endif %}
+          {% if finished and response.time_spent_seconds %}
+            <div class="paper-meta">Time on this question: {{ response.time_spent_seconds|duration }}</div>
+          {% endif %}
+
+          {% if finished and is_wrong %}
+            <div class="reason-box" id="reason">
+              <div class="paper-meta">Why did this go wrong?</div>
+              <div>
+                <span class="chip">{{ reason_label }}</span>
+                <span class="paper-meta">{{ "chosen by you" if response.reason_overridden else "suggested" }}</span>
+              </div>
+              <div class="paper-meta">{{ reason_help }}</div>
+              <form method="post" action="/attempts/{{ attempt.id }}/q/{{ position }}/reason" class="reason-form">
+                <label for="reason-select">Change the reason</label>
+                <select id="reason-select" name="reason">
+                  {% for value, label in reason_choices %}
+                    <option value="{{ value }}" {% if response.mistake_reason.name == value %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+                <label for="reason-note">A note to yourself (optional)</label>
+                <textarea id="reason-note" name="note" maxlength="500" placeholder="e.g. mixed up Article 32 with Article 226">{{ response.note or "" }}</textarea>
+                <div class="row" style="gap:8px">
+                  <button type="submit" class="secondary">Save reason</button>
+                  {% if response.reason_overridden %}
+                    <button type="submit" name="reset" value="1" class="secondary">Back to suggested</button>
+                  {% endif %}
+                </div>
+              </form>
+            </div>
+          {% endif %}
+        {% else %}
+          <div class="verdict neutral">You didn't answer this one. The answer is {{ question.correct_answer }}.</div>
+        {% endif %}
+
+        {{ explanation(question, explanation_label, expl_label_hi(question)) }}
+
+        {% include "_report_form.html" %}
+
+        <div class="keep-box">
+          <form method="post" action="/questions/{{ question.id }}/bookmark" class="inline-form">
+            <input type="hidden" name="on" value="{{ '0' if bookmarked else '1' }}">
+            <input type="hidden" name="next" value="{{ page_url }}">
+            <button type="submit" class="secondary">{{ "★ Bookmarked — remove" if bookmarked else "☆ Bookmark this question" }}</button>
+          </form>
+          <form method="post" action="/questions/{{ question.id }}/note" class="note-form">
+            <label for="note-text">Your private note</label>
+            <textarea id="note-text" name="text" maxlength="{{ max_note }}" placeholder="Anything worth remembering about this one">{{ note_text }}</textarea>
+            <input type="hidden" name="next" value="{{ page_url }}">
+            <button type="submit" class="secondary">Save note</button>
+          </form>
+        </div>
+
+      {% else %}
+        <form method="post" action="/attempts/{{ attempt.id }}/q/{{ position }}/answer" id="answer-form">
+          <ul class="opt-list">
+            {% for letter, text in options %}
+              <li>
+                <label class="opt">
+                  <input type="radio" name="answer" value="{{ letter }}">
+                  <span class="opt-letter">{{ letter }}</span>
+                  {{ option_text(question, letter) }}
+                </label>
+              </li>
+            {% endfor %}
+          </ul>
+
+          <div class="conf-block">
+            <div class="paper-meta">How sure are you?</div>
+            <div class="conf-row">
+              {% for value, label in confidence_labels.items() %}
+                <label class="conf">
+                  <input type="radio" name="confidence" value="{{ value }}">
+                  <span>{{ label }}</span>
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+
+          <button type="submit" class="big" id="check-btn">Check answer</button>
+        </form>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  <div class="step-row">
+    {% if prev_pos %}<a href="/attempts/{{ attempt.id }}/q/{{ prev_pos }}" class="btn-link secondary-link">← Previous</a>{% else %}<span></span>{% endif %}
+    {% if next_pos %}<a href="/attempts/{{ attempt.id }}/q/{{ next_pos }}" class="btn-link">{{ "Next →" if reveal or not available or finished else "Skip →" }}</a>{% else %}<span></span>{% endif %}
+  </div>
+
+  {% if not finished %}
+    <form method="post" action="/attempts/{{ attempt.id }}/finish" class="finish-row"
+          onsubmit="return confirm('Finish this session? Questions you haven\'t answered will count as skipped.');">
+      <button type="submit" class="secondary">{{ "Finish & see results" if answered == total else "End session" }}</button>
+    </form>
+  {% else %}
+    <p><a href="/attempts/{{ attempt.id }}/result">← Back to results</a></p>
+  {% endif %}
+
+  </div>
+  <script src="/static/practice.js"></script>
+  <script src="/static/lang.js"></script>
+{% endblock %}

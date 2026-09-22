@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block content %}
+  <div class="page-head">
+    <div>
+      <h1>Users</h1>
+      <p class="page-sub">{{ pending|length }} waiting for approval · {{ approved|length + admins|length }} active{% if deactivated %} · {{ deactivated|length }} deactivated{% endif %}</p>
+    </div>
+  </div>
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  <h2>Pending requests ({{ pending|length }})</h2>
+  {% if pending %}
+    <table class="user-table">
+      {% for u in pending %}
+        <tr>
+          <td>{{ u.username }}</td>
+          <td class="paper-meta">requested {{ u.created_at.strftime("%d %b %Y, %H:%M") }} UTC</td>
+          <td class="actions">
+            <form method="post" action="/admin/users/{{ u.id }}/approve"><button type="submit">Approve</button></form>
+            <form method="post" action="/admin/users/{{ u.id }}/reject"><button type="submit" class="secondary">Reject</button></form>
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p class="empty-state">No pending requests.</p>
+  {% endif %}
+
+  <h2>Approved ({{ approved|length + admins|length }})</h2>
+  <table class="user-table">
+    {% for u in admins %}
+      <tr><td>{{ u.username }}</td><td class="paper-meta">admin</td><td></td></tr>
+    {% endfor %}
+    {% for u in approved %}
+      <tr>
+        <td>{{ u.username }}{% if u.must_change_password %} <span class="flag">Must choose a new password</span>{% endif %}</td>
+        <td class="paper-meta">
+          approved {{ u.decided_at.strftime("%d %b %Y") if u.decided_at else "" }}
+          {% if u.last_active_at %}· last active {{ u.last_active_at.strftime("%d %b %Y, %H:%M") }} UTC{% endif %}
+        </td>
+        <td class="actions">
+          <form method="post" action="/admin/users/{{ u.id }}/reset-password"
+                onsubmit="return confirm('Reset the password for {{ u.username }}? They will be signed out everywhere and must choose a new password.');">
+            <button type="submit" class="secondary">Reset password</button>
+          </form>
+          <form method="post" action="/admin/users/{{ u.id }}/deactivate"
+                onsubmit="return confirm('Deactivate {{ u.username }}? They are signed out at once. Their history is kept.');">
+            <button type="submit" class="secondary">Deactivate</button>
+          </form>
+          <form method="post" action="/admin/users/{{ u.id }}/reject"><button type="submit" class="secondary">Revoke</button></form>
+          <form method="post" action="/admin/users/{{ u.id }}/remove"><button type="submit" class="secondary">Remove</button></form>
+        </td>
+      </tr>
+    {% endfor %}
+  </table>
+
+  {% if deactivated %}
+    <h2>Deactivated ({{ deactivated|length }})</h2>
+    <p class="paper-meta">Signed out and unable to log in. Their results are kept, and reactivating restores access.</p>
+    <table class="user-table">
+      {% for u in deactivated %}
+        <tr>
+          <td>{{ u.username }}</td>
+          <td class="paper-meta">deactivated {{ u.decided_at.strftime("%d %b %Y") if u.decided_at else "" }}</td>
+          <td class="actions">
+            <form method="post" action="/admin/users/{{ u.id }}/reactivate"><button type="submit">Reactivate</button></form>
+            <form method="post" action="/admin/users/{{ u.id }}/reset-password"
+                  onsubmit="return confirm('Reset the password for {{ u.username }}?');">
+              <button type="submit" class="secondary">Reset password</button>
+            </form>
+            <form method="post" action="/admin/users/{{ u.id }}/remove"><button type="submit" class="secondary">Remove</button></form>
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% endif %}
+
+  {% if rejected %}
+    <h2>Rejected ({{ rejected|length }})</h2>
+    <p class="paper-meta">Rejected users can't request again until you remove them.</p>
+    <table class="user-table">
+      {% for u in rejected %}
+        <tr>
+          <td>{{ u.username }}</td>
+          <td class="paper-meta">declined {{ u.decided_at.strftime("%d %b %Y") if u.decided_at else "" }}</td>
+          <td class="actions">
+            <form method="post" action="/admin/users/{{ u.id }}/approve"><button type="submit">Approve</button></form>
+            <form method="post" action="/admin/users/{{ u.id }}/remove"><button type="submit" class="secondary">Remove</button></form>
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% endif %}
+{% endblock %}

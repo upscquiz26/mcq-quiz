@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}{{ kind_label }} — Q{{ position }}{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block body_class %}focus-mode{% endblock %}
+{% block content %}
+  {% from "_lang.html" import question_text, option_text, toggle %}
+  {% set lang = user_language(request) %}
+  <div class="lang-scope" data-lang="{{ lang }}">
+  <div class="test-bar" id="test-bar"
+       data-deadline="{{ deadline_iso }}" data-server-now="{{ server_now_iso }}"
+       data-finish-url="/attempts/{{ attempt.id }}/finish">
+    <div>
+      <strong>{{ kind_label }}</strong>
+      <span class="paper-meta">· Question {{ position }} of {{ total }}</span>
+    </div>
+    <div class="timer" id="timer" role="timer" aria-label="Time remaining">--:--</div>
+    {% if show_toggle %}{{ toggle(lang, "/attempts/" ~ attempt.id ~ "/q/" ~ position) }}{% endif %}
+    <a href="/attempts/{{ attempt.id }}/submit" class="btn-link">Submit test</a>
+  </div>
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  <div class="test-layout">
+    <div class="test-main">
+      <div class="q-card practice-card">
+        {% if not available %}
+          <p class="empty-state">This question is no longer available.</p>
+
+        {% else %}
+          {{ question_text(question) }}
+
+          {% if question.has_image and question.source_image_path %}
+            <div class="q-snapshot">
+              <img src="/media/{{ question.paper_id }}/{{ question.source_image_path }}" alt="The question as printed">
+            </div>
+          {% endif %}
+
+          <form method="post" action="/attempts/{{ attempt.id }}/q/{{ position }}/save" id="save-form"
+                data-save-url="/attempts/{{ attempt.id }}/q/{{ position }}/save">
+            <ul class="opt-list">
+              {% for letter, text in options %}
+                <li>
+                  <label class="opt">
+                    <input type="radio" name="answer" value="{{ letter }}" {% if response.selected_answer == letter %}checked{% endif %}>
+                    <span class="opt-letter">{{ letter }}</span>
+                    {{ option_text(question, letter) }}
+                  </label>
+                </li>
+              {% endfor %}
+            </ul>
+
+            <div class="conf-block">
+              <div class="paper-meta">How sure are you?</div>
+              <div class="conf-row">
+                {% for value, label in confidence_labels.items() %}
+                  <label class="conf">
+                    <input type="radio" name="confidence" value="{{ value }}" {% if response.confidence.value == value %}checked{% endif %}>
+                    <span>{{ label }}</span>
+                  </label>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="test-actions-row">
+              <input type="hidden" name="marked" value="0">
+              <label class="mark-toggle">
+                <input type="checkbox" name="marked" value="1" {% if response.marked_for_review %}checked{% endif %}>
+                <span>Mark for review</span>
+              </label>
+              <button type="submit" name="clear" value="1" class="secondary" id="clear-btn">Clear response</button>
+            </div>
+
+            <div class="save-line">
+              <span id="save-status" class="paper-meta" aria-live="polite">Answers save automatically.</span>
+              <button type="submit" name="go" value="next" class="save-fallback">Save &amp; next</button>
+            </div>
+          </form>
+        {% endif %}
+      </div>
+
+      <div class="step-row">
+        {% if prev_pos %}<a href="/attempts/{{ attempt.id }}/q/{{ prev_pos }}" class="btn-link secondary-link">← Previous</a>{% else %}<span></span>{% endif %}
+        {% if next_pos %}<a href="/attempts/{{ attempt.id }}/q/{{ next_pos }}" class="btn-link">Next →</a>{% else %}<span></span>{% endif %}
+      </div>
+    </div>
+
+    <aside class="test-side">
+      <details class="palette" id="palette">
+        <summary>Question palette · <span id="answered-count">{{ summary.answered }}</span>/{{ total }} answered</summary>
+        <div class="palette-grid">
+          {% for p in palette %}
+            <a href="/attempts/{{ attempt.id }}/q/{{ p.pos }}" id="pal-{{ p.pos }}"
+               class="pal {{ p.state }} {{ 'marked' if p.marked }} {{ 'current' if p.pos == position }}"
+               aria-label="Question {{ p.pos }}">{{ p.pos }}</a>
+          {% endfor %}
+        </div>
+        <div class="paper-meta palette-legend">
+          <span><span class="pal answered">1</span> answered</span>
+          <span><span class="pal unanswered">2</span> not answered</span>
+          <span><span class="pal notvisited">3</span> not visited</span>
+          <span><span class="pal marked notvisited">4</span> marked for review</span>
+        </div>
+      </details>
+    </aside>
+  </div>
+
+  <form id="auto-finish" method="post" action="/attempts/{{ attempt.id }}/finish"></form>
+  </div>
+  <script src="/static/test.js"></script>
+  <script src="/static/lang.js"></script>
+{% endblock %}

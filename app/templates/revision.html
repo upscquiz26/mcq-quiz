@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Revision{% endblock %}
+{% block content %}
+  <h1>Revision</h1>
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  {% if not has_any %}
+    <div class="empty-state">
+      Nothing here yet. Any question you get wrong — or get right but guess — is collected in this notebook, and
+      wrong ones come back on a schedule (after 1, 3, 7 and then 15 days) until you get them right twice in a row.<br>
+      <a href="/practice" class="btn-link">Start practising</a>
+    </div>
+  {% else %}
+    <div class="dash-grid">
+      <section class="dash-card">
+        <h2>Due now</h2>
+        <p><strong class="big-num">{{ due_now }}</strong> question{{ "s" if due_now != 1 else "" }} due for revision</p>
+        {% if due_now %}
+          <form method="post" action="/revision/start" class="inline-form">
+            <input type="hidden" name="mode" value="due">
+            <select name="count" aria-label="How many">
+              {% for n in count_choices %}<option value="{{ n }}" {% if n == 10 %}selected{% endif %}>{{ n }}</option>{% endfor %}
+            </select>
+            <button type="submit" class="big">Revise what's due</button>
+          </form>
+          <p class="paper-meta">Most overdue first. Missed days just roll over — nothing is lost.</p>
+        {% else %}
+          <p class="paper-meta">Nothing is due today. Well done.</p>
+        {% endif %}
+      </section>
+
+      <section class="dash-card">
+        <h2>Practise my mistakes</h2>
+        <form method="post" action="/revision/start" class="practice-form">
+          <input type="hidden" name="mode" value="all">
+          <div class="row wrap">
+            <div>
+              <label for="p_subject">Subject</label>
+              <select id="p_subject" name="subject_id"><option value="">Any</option>
+                {% for id, name in subject_choices %}<option value="{{ id }}">{{ name }}</option>{% endfor %}</select>
+            </div>
+            <div>
+              <label for="p_topic">Topic</label>
+              <select id="p_topic" name="topic_id"><option value="">Any</option>
+                {% for id, name in topic_choices %}<option value="{{ id }}">{{ name }}</option>{% endfor %}</select>
+            </div>
+            <div>
+              <label for="p_reason">Why I got it wrong</label>
+              <select id="p_reason" name="reason"><option value="">Any</option>
+                {% for value, label in reason_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+            </div>
+            <div>
+              <label for="p_count">Questions</label>
+              <select id="p_count" name="count">
+                {% for n in count_choices %}<option value="{{ n }}" {% if n == 10 %}selected{% endif %}>{{ n }}</option>{% endfor %}
+              </select>
+            </div>
+          </div>
+          <label class="check-line"><input type="checkbox" name="include_mastered" value="1"> Include ones I've mastered</label>
+          <button type="submit" class="secondary">Start mistake practice</button>
+        </form>
+      </section>
+    </div>
+
+    <h2>My mistake notebook</h2>
+    <p class="filter-row">
+      {% for key, label in state_filters.items() %}
+        <a href="?state={{ key }}{% if selected.subject_id %}&subject_id={{ selected.subject_id }}{% endif %}{% if selected.topic_id %}&topic_id={{ selected.topic_id }}{% endif %}{% if selected.reason %}&reason={{ selected.reason }}{% endif %}"
+           class="{{ 'on' if selected.state == key }}">{{ label }} ({{ state_counts[key] }})</a>{{ " · " if not loop.last }}
+      {% endfor %}
+    </p>
+
+    <form method="get" action="/revision" class="toolbar notebook-filters">
+      <input type="hidden" name="state" value="{{ selected.state }}">
+      <select name="subject_id" aria-label="Subject"><option value="">All subjects</option>
+        {% for id, name in subject_choices %}<option value="{{ id }}" {% if selected.subject_id == id %}selected{% endif %}>{{ name }}</option>{% endfor %}</select>
+      <select name="topic_id" aria-label="Topic"><option value="">All topics</option>
+        {% for id, name in topic_choices %}<option value="{{ id }}" {% if selected.topic_id == id %}selected{% endif %}>{{ name }}</option>{% endfor %}</select>
+      <select name="reason" aria-label="Reason"><option value="">Any reason</option>
+        {% for value, label in reason_choices %}<option value="{{ value }}" {% if selected.reason == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <button type="submit" class="secondary">Filter</button>
+    </form>
+
+    <ul class="result-list notebook">
+      {% for e in entries %}
+        <li>
+          <a href="/questions/{{ e.question.id }}" class="result-row">
+            <span class="chip state-{{ e.state }}">
+              {% if e.state == "due" %}{{ "Due now" if e.days_until == 0 else "Overdue " ~ (-e.days_until) ~ "d" }}
+              {% elif e.state == "scheduled" %}In {{ e.days_until }} day{{ "s" if e.days_until != 1 else "" }}
+              {% else %}{{ state_labels[e.state] }}{% endif %}
+            </span>
+            <span class="result-text">
+              {{ list_text(e.question, user_language(request))|truncate(110) }}
+              <span class="paper-meta">
+                {% if e.wrong %}wrong ×{{ e.wrong }}{% endif %}
+                {% if e.wrong and e.guessed_right %}·{% endif %}
+                {% if e.guessed_right %}guessed right ×{{ e.guessed_right }}{% endif %}
+                {% if e.reason %}· <span class="chip small">{{ reason_labels[e.reason] }}</span>{% endif %}
+              </span>
+            </span>
+            <span class="paper-meta">{% if e.bookmarked %}★{% endif %}{% if e.has_note %} ✎{% endif %}</span>
+          </a>
+        </li>
+      {% else %}
+        <li class="empty-state">Nothing matches those filters.</li>
+      {% endfor %}
+    </ul>
+    {% if total_shown > row_limit %}
+      <p class="paper-meta">Showing the first {{ row_limit }} of {{ total_shown }}. Use the filters to narrow it down.</p>
+    {% endif %}
+    <p class="paper-meta">
+      <a href="/bookmarks">★ My bookmarks</a> · Wrong questions come back after {{ ladder[0] }}, {{ ladder[1] }}, {{ ladder[2] }} and then
+      {{ ladder[3] }} days, and leave the schedule after you get them right twice in a row.
+    </p>
+  {% endif %}
+{% endblock %}

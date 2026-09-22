@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}File import report{% endblock %}
+{% block content %}
+  <div class="page-head"><div>
+    <h1>{% if kind == "table" %}Spreadsheet{% elif kind == "docx" %}Document{% else %}Pictures{% endif %} report</h1>
+    <p class="page-sub">{{ meta.names|join(", ") if meta.names|length < 4 else (meta.names|length ~ " pictures") }} — nothing is saved until you press Import.</p>
+  </div></div>
+
+  {% if flash %}<div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>{% endif %}
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+  <form method="post" action="/admin/import/file/apply">
+    <input type="hidden" name="token" value="{{ token }}">
+
+    {% if kind == "table" %}
+      <div class="dash-card">
+        <h2>1. Which column is which?</h2>
+        {% if remembered %}<div class="notice">Using the choice you made last time for a file with these headers (used {{ remembered.uses }} time{{ "s" if remembered.uses != 1 else "" }}). Change anything that's wrong.</div>{% endif %}
+        {% if table.note %}<p class="paper-meta">{{ table.note }}</p>{% endif %}
+        {% if table.sheets|length > 1 %}
+          <div class="row" style="gap:8px; align-items:end">
+            <div><label for="sheet">Sheet</label>
+              <select id="sheet" name="sheet">{% for s in table.sheets %}<option value="{{ s }}" {% if s == table.sheet %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
+            <button type="submit" name="switch_sheet" value="1" formaction="/admin/import/file/preview" class="secondary">Use this sheet</button>
+          </div>
+        {% endif %}
+        <div class="table-scroll">
+          <table class="dist file-preview">
+            <tr>{% for h in table.headers %}<th>Column {{ loop.index }}<br><span class="paper-meta">{{ h }}</span></th>{% endfor %}</tr>
+            {% for row in table.rows[:preview_rows] %}<tr>{% for cell in row %}<td>{{ cell[:80] }}</td>{% endfor %}</tr>{% endfor %}
+          </table>
+        </div>
+        <p class="paper-meta">First {{ [table.rows|length, preview_rows]|min }} of {{ table.rows|length }} rows.</p>
+        <div class="map-grid">
+          {% for name, label, required in fields %}
+            <div>
+              <label for="map_{{ name }}">{{ label }}{% if required %} <span class="paper-meta">(required)</span>{% endif %}</label>
+              <select id="map_{{ name }}" name="map_{{ name }}">
+                <option value="">— none —</option>
+                {% for h in table.headers %}<option value="{{ loop.index0 }}" {% if mapping.get(name) == loop.index0 %}selected{% endif %}>Column {{ loop.index }}: {{ h }}</option>{% endfor %}
+              </select>
+            </div>
+          {% endfor %}
+        </div>
+        <button type="submit" formaction="/admin/import/file/preview" class="secondary">Check this choice</button>
+      </div>
+    {% elif kind == "images" %}
+      <div class="dash-card">
+        <h2>{{ images }} picture{{ "s" if images != 1 else "" }}</h2>
+        <p>They will be joined, in the order given, into one scanned paper of {{ images }} page{{ "s" if images != 1 else "" }} and read by OCR (Tesseract must be installed).
+          The reader looks for numbered questions with options (a)–(d), exactly as for a scanned PDF, and keeps a picture of each question for the review screen.
+          Sharp, straight, well-lit pictures read best.</p>
+      </div>
+    {% endif %}
+
+    {% if parsed %}
+      <div class="dash-card">
+        <h2>{% if kind == "table" %}2. {% endif %}What was found</h2>
+        {% if parsed.errors %}
+          <div class="error">
+            <strong>{{ parsed.errors|length }} problem{{ "s" if parsed.errors|length != 1 else "" }} — the import can't go ahead.</strong>
+            <ul>{% for e in parsed.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+          </div>
+        {% else %}
+          <div class="notice"><strong>No problems.</strong> {{ parsed.questions|length }} question{{ "s" if parsed.questions|length != 1 else "" }} can be imported.</div>
+        {% endif %}
+        {% if parsed.warnings %}
+          <div class="warnings"><strong>{{ parsed.warnings|length }} warning{{ "s" if parsed.warnings|length != 1 else "" }}</strong>
+            <ul>{% for w in parsed.warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>
+        {% endif %}
+        {% if parsed.questions %}
+          <details class="tool-box" open>
+            <summary>The first {{ [parsed.questions|length, sample]|min }} questions as they will be saved</summary>
+            {% for q in parsed.questions[:sample] %}
+              <div class="q-card">
+                <div class="q-num">Q{{ q.number }}{% if q.answer %} <span class="flag ok">Answer {{ q.answer }}</span>{% else %} <span class="flag">No answer</span>{% endif %}
+                  {% if q.subject %}<span class="paper-meta">{{ q.subject }}</span>{% endif %}</div>
+                <p class="q-text">{{ q.text[:300] }}{{ "…" if q.text|length > 300 }}</p>
+                <ul class="opt-list">
+                  {% for letter, text in [("A", q.options[0]), ("B", q.options[1]), ("C", q.options[2]), ("D", q.options[3])] %}
+                    <li class="opt static {{ 'correct' if letter == q.answer }}"><span class="opt-letter">{{ letter }}</span><span class="opt-text">{{ text[:160] }}</span></li>
+                  {% endfor %}
+                </ul>
+              </div>
+            {% endfor %}
+          </details>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    <div class="dash-card">
+      <h2>{% if paper %}Adding to “{{ paper.title }}”{% else %}The new paper{% endif %}</h2>
+      {% if paper %}
+        <p class="paper-meta">Only question numbers the paper doesn't have yet are added.</p>
+      {% else %}
+        <div><label for="title">Paper title</label><input type="text" id="title" name="title" value="{{ form.title }}" required></div>
+        <div class="row">
+          <div><label for="source_type">Source</label>
+            <select id="source_type" name="source_type"><option value="">—</option>
+              {% for value, label in source_types.items() %}<option value="{{ value }}" {% if form.source_type == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+          <div><label for="source_name">Source name</label><input type="text" id="source_name" name="source_name" value="{{ form.source_name }}"></div>
+          <div><label for="test_name">Test name</label><input type="text" id="test_name" name="test_name" value="{{ form.test_name }}"></div>
+          <div><label for="test_number">Test number</label><input type="text" id="test_number" name="test_number" value="{{ form.test_number }}"></div>
+        </div>
+        <div class="row">
+          <div><label for="series">Series</label>
+            <select id="series" name="series"><option value="">—</option>{% for s in ["A", "B", "C", "D"] %}<option value="{{ s }}" {% if form.series == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
+          <div><label for="year">Year</label><input type="number" id="year" name="year" value="{{ form.year }}"></div>
+          <div><label for="exam_type">Type</label>
+            <select id="exam_type" name="exam_type">
+              <option value="full_length" {% if form.exam_type == 'full_length' %}selected{% endif %}>Full-length</option>
+              <option value="sectional" {% if form.exam_type == 'sectional' %}selected{% endif %}>Sectional</option>
+            </select></div>
+        </div>
+        <div class="row">
+          <div><label for="expected_total">Expected questions</label><input type="number" id="expected_total" name="expected_total" min="1" value="{{ form.expected_total }}"></div>
+          <div><label for="marks_per_question">Marks per question</label><input type="text" id="marks_per_question" name="marks_per_question" value="{{ form.marks_per_question }}" placeholder="2"></div>
+          <div><label for="negative_fraction">Negative marking</label><input type="text" id="negative_fraction" name="negative_fraction" value="{{ form.negative_fraction }}" placeholder="1/3"></div>
+          <div><label for="duration_minutes">Time allowed (minutes)</label><input type="number" id="duration_minutes" name="duration_minutes" min="1" max="600" value="{{ form.duration_minutes }}"></div>
+        </div>
+        <div class="row">
+          <div><label for="key_source">Answer key source</label><input type="text" id="key_source" name="key_source" value="{{ form.key_source }}" placeholder="left blank: “Imported file — unverified”"></div>
+          <div><label for="key_version">Key version</label><input type="text" id="key_version" name="key_version" value="{{ form.key_version }}"></div>
+        </div>
+        <label class="check-line"><input type="checkbox" name="allow_duplicate" value="true"> Import anyway if this file, or a paper for the same test, was imported before</label>
+      {% endif %}
+    </div>
+
+    <div class="notice">Everything is saved as <strong>needs review</strong>: nothing is confirmed and students can't see it until you have checked and published it.</div>
+    <button type="submit" {% if parsed and not parsed.ok %}disabled{% endif %}>
+      {% if kind == "images" %}Read {{ images }} picture{{ "s" if images != 1 else "" }} as a paper{% else %}Import {{ parsed.questions|length if parsed else 0 }} question{{ "s" if parsed and parsed.questions|length != 1 else "" }}{% endif %}
+    </button>
+  </form>
+{% endblock %}

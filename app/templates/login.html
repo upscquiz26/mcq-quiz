@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Log in{% endblock %}
+{% block content %}
+  <div class="login-box">
+    <h1>Log in</h1>
+
+    {% if notice %}
+      <div class="notice">{{ notice }}</div>
+    {% endif %}
+    {% if error %}
+      <div class="error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="/login">
+      <input type="hidden" name="next" value="{{ next }}">
+      <div>
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" autocomplete="username" autofocus required>
+      </div>
+      <div>
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit">Log in</button>
+    </form>
+
+    <p class="paper-meta">No account? <a href="/signup">Request one</a> — the admin will need to approve it.</p>
+  </div>
+{% endblock %}

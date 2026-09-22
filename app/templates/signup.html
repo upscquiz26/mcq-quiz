@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Request an account{% endblock %}
+{% block content %}
+  <div class="login-box">
+    <h1>Request an account</h1>
+    <p class="paper-meta">Choose a username and password now. You can log in once the admin approves your request.</p>
+
+    {% if error %}
+      <div class="error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="/signup">
+      <div>
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" value="{{ username }}"
+               autocomplete="username" autofocus required
+               pattern="[A-Za-z0-9_.\-]{3,30}" title="3–30 letters, numbers, dot, dash or underscore">
+      </div>
+      <div>
+        <label for="password">Password (at least 8 characters)</label>
+        <input type="password" id="password" name="password" autocomplete="new-password" minlength="8" required>
+      </div>
+      <div>
+        <label for="confirm">Confirm password</label>
+        <input type="password" id="confirm" name="confirm" autocomplete="new-password" minlength="8" required>
+      </div>
+      <button type="submit">Send request</button>
+    </form>
+
+    <p class="paper-meta"><a href="/login">Back to log in</a></p>
+  </div>
+{% endblock %}

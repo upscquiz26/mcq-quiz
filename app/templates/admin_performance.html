@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}User performance{% endblock %}
+{% block content %}
+  <p class="paper-meta"><a href="/admin">← Admin dashboard</a></p>
+  <div class="page-head"><div><h1>User performance</h1><p class="page-sub">A read-only look at how each student is doing.</p></div></div>
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  <p class="paper-meta">
+    Read-only. Students are told in their profile that you can see this. Figures use each student's graded answers over
+    all time; a topic (or subject) is “weak” when accuracy is below {{ 60 }}% over at least 5 answers.
+  </p>
+
+  {% if not rows %}
+    <div class="empty-state">No approved students yet.</div>
+  {% else %}
+    <div class="table-wrap">
+      <table class="user-table">
+        <tr>
+          <th>Student</th><th>Last active</th><th>Timed tests</th><th>Average score</th><th>Accuracy</th>
+          <th>Weakest {{ "topics" if rows|selectattr("weak_kind", "equalto", "topics")|list else "areas" }}</th>
+        </tr>
+        {% for r in rows %}
+          {% set o = r.overview %}
+          <tr>
+            <td>
+              <a href="/admin/performance/{{ r.user.id }}">{{ r.user.display_name or r.user.username }}</a>
+              {% if r.user.display_name %}<span class="paper-meta">@{{ r.user.username }}</span>{% endif %}
+            </td>
+            <td>{% if r.user.last_active_at %}{{ r.user.last_active_at.strftime("%d %b %Y, %H:%M") }} UTC{% else %}never{% endif %}</td>
+            <td>{{ o.tests_taken }}</td>
+            <td>{{ (o.average_score|marks ~ "%") if o.average_score is not none else "—" }}</td>
+            <td>
+              {% if o.accuracy is not none %}{{ o.accuracy }}% <span class="paper-meta">({{ o.right }} of {{ o.answered }})</span>
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              {% if r.weak_names %}{{ r.weak_names|join(", ") }}{% if r.weak_kind == "subjects" %} <span class="paper-meta">(subjects)</span>{% endif %}
+              {% elif o.answered %}<span class="paper-meta">nothing flagged</span>
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </table>
+    </div>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Answer key — {{ paper.title }}{% endblock %}
+{% block content %}
+  <p class="crumbs"><a href="/review/{{ paper.id }}">← {{ paper.title }}</a></p>
+  <div class="page-head"><div><h1>Answer key</h1><p class="page-sub">Add or check the answers for “{{ paper.title }}”. You see a preview first; nothing changes until you apply it.</p></div></div>
+
+  {% if flash %}<div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>{% endif %}
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+  {# ---------------- what the paper has now ---------------- #}
+  <section class="dash-card">
+    <div class="card-title"><span class="icon-badge"><span class="icon i-check" aria-hidden="true"></span></span><h2>Answers this paper has now</h2></div>
+    <p>
+      <strong>{{ summary.with_answer }}</strong> of <strong>{{ summary.total }}</strong> question{{ "s" if summary.total != 1 else "" }} have an answer
+      {% if summary.without %}· <strong>{{ summary.without }}</strong> don't, and can't be published until they do{% endif %}
+    </p>
+    {% if summary.sources %}
+      <p class="paper-meta">
+        {% for label, n in summary.sources %}{{ n }} from {{ label }}{{ " · " if not loop.last }}{% endfor %}
+      </p>
+    {% endif %}
+    {% if summary.key_source %}<p class="paper-meta">Key source: <strong>{{ summary.key_source }}</strong>{% if summary.key_version %} · version {{ summary.key_version }}{% endif %}</p>{% endif %}
+    {% if summary.count_off %}<p class="paper-meta">The paper has {{ summary.total }} question{{ "s" if summary.total != 1 else "" }} but {{ paper.expected_total }} were expected.</p>{% endif %}
+    {% if summary.spread %}
+      <div class="warnings">More than half of the answers ({{ summary.spread.share }}%) are “{{ summary.spread.letter }}”. Real papers are rarely that lopsided — worth a look.</div>
+    {% endif %}
+    {% if summary.mismatches %}
+      <div class="warnings">
+        The explanation states a different answer from the key for
+        {% for n in summary.mismatches[:20] %}<a href="/review/{{ paper.id }}#q{{ n }}">Q{{ n }}</a>{{ ", " if not loop.last }}{% endfor %}{% if summary.mismatches|length > 20 %} …{% endif %}.
+      </div>
+    {% endif %}
+  </section>
+
+  {% if preview %}
+    {% set parse = preview.parse %}
+    {% set c = preview.compare %}
+    <h2>Preview</h2>
+    <p class="paper-meta">From {{ preview.label }} · detected: <strong>{{ parse.format or "nothing recognisable" }}</strong>{% if parse.series %} · series {{ parse.series }}{% endif %}</p>
+
+    {% if parse.errors %}
+      <div class="error"><strong>{{ parse.errors|length }} problem{{ "s" if parse.errors|length != 1 else "" }} — this key can't be applied.</strong></div>
+      <ul class="warnings">{% for i in parse.errors %}<li>{{ i.message }}</li>{% endfor %}</ul>
+    {% endif %}
+
+    {% if parse.answers %}
+      <div class="viz-stats">
+        <div class="viz-stat"><div class="viz-stat-label">Answers in the key</div><div class="viz-stat-value">{{ c.found }}</div>
+          <div class="viz-stat-note">the paper has {{ c.questions }} question{{ "s" if c.questions != 1 else "" }}</div></div>
+        <div class="viz-stat"><div class="viz-stat-label">Would be filled in</div><div class="viz-stat-value">{{ c.new|length }}</div>
+          <div class="viz-stat-note">questions with no answer yet</div></div>
+        <div class="viz-stat"><div class="viz-stat-label">Already the same</div><div class="viz-stat-value">{{ c.same|length }}</div></div>
+        <div class="viz-stat"><div class="viz-stat-label">Different from now</div><div class="viz-stat-value">{{ c.different|length }}</div>
+          <div class="viz-stat-note">answers already set</div></div>
+      </div>
+
+      <p class="paper-meta">
+        Letters in the key: {% for letter, n in c.distribution.items() %}{{ letter }} {{ n }}{{ " · " if not loop.last }}{% endfor %}
+      </p>
+      {% if c.spread %}
+        <div class="warnings">More than half of the key ({{ c.spread.share }}%) is “{{ c.spread.letter }}”. Check that this is the right key.</div>
+      {% endif %}
+      {% if c.found != c.questions %}
+        <div class="warnings">The key has {{ c.found }} answer{{ "s" if c.found != 1 else "" }} but the paper has {{ c.questions }} question{{ "s" if c.questions != 1 else "" }}.</div>
+      {% endif %}
+      {% if c.missing %}
+        <div class="warnings">No answer in the key for: {{ c.missing[:40]|join(", ") }}{% if c.missing|length > 40 %} … ({{ c.missing|length }} in all){% endif %}.</div>
+      {% endif %}
+      {% if c.extra %}
+        <p class="paper-meta">Ignored — the paper has no such question: {{ c.extra[:40]|join(", ") }}{% if c.extra|length > 40 %} …{% endif %}.</p>
+      {% endif %}
+      {% if c.mismatches %}
+        <div class="warnings">For {{ c.mismatches[:30]|join(", ") }} the question's explanation states a different answer from this key. They'll be flagged for review.</div>
+      {% endif %}
+      {% for i in parse.warnings %}<div class="warnings">{{ i.message }}</div>{% endfor %}
+
+      {% if c.different %}
+        <h3>Answers that would change</h3>
+        <div class="table-wrap">
+          <table class="user-table">
+            <tr><th>Question</th><th>Now</th><th>In this key</th><th>Status</th></tr>
+            {% for d in c.different %}
+              <tr><td><a href="/review/{{ paper.id }}#q{{ d.number }}">Q{{ d.number }}</a></td><td>{{ d.current }}</td><td><strong>{{ d.key }}</strong></td>
+                  <td>{{ "confirmed — would go back to review" if d.status in ["verified", "live"] else "waiting for review" }}</td></tr>
+            {% endfor %}
+          </table>
+        </div>
+      {% endif %}
+      {% if preview.explanations %}
+        <p class="paper-meta">The key also carries {{ preview.explanations }} explanation{{ "s" if preview.explanations != 1 else "" }}; they would fill questions that have none, as “unverified”.</p>
+      {% endif %}
+
+      {% if parse.ok %}
+        <h2>Apply</h2>
+        <form method="post" action="/review/{{ paper.id }}/key/apply" class="form-card">
+          <input type="hidden" name="token" value="{{ preview.token }}">
+          <div class="row">
+            <div>
+              <label for="apply_source">Where does this key come from?</label>
+              <input type="text" id="apply_source" name="key_source" required value="{{ form.key_source or paper.key_source or '' }}"
+                     placeholder="e.g. institute answer sheet, UPSC final key">
+            </div>
+            <div>
+              <label for="apply_version">Version (optional)</label>
+              <input type="text" id="apply_version" name="key_version" value="{{ form.key_version or paper.key_version or '' }}" placeholder="e.g. provisional, final, 12 Jun">
+            </div>
+          </div>
+          <label class="check-line">
+            <input type="checkbox" name="replace" value="true">
+            Also replace answers the paper already has ({{ c.different|length }} differ). Otherwise only questions with no answer are filled in.
+          </label>
+          <div class="notice">Changing a confirmed question's answer sends it back to review, and the old version stays in its history.</div>
+          <button type="submit">Apply the key</button>
+        </form>
+      {% endif %}
+    {% endif %}
+  {% endif %}
+
+  <h2>{{ "Try another key" if preview else "Add a key" }}</h2>
+  <form method="post" action="/review/{{ paper.id }}/key/preview" enctype="multipart/form-data" class="form-card">
+    <div>
+      <label for="pasted">Paste the key</label>
+      <textarea id="pasted" name="pasted" rows="6" style="font-family:Consolas,monospace;font-size:13px"
+                placeholder="1-b 2-d 3-a 4-c …   or   1. (b)   or   Q1: B   or one line per question">{{ form.pasted or "" }}</textarea>
+    </div>
+    <div>
+      <label for="key_file">…or upload a key file (PDF with real text, or .txt)</label>
+      <input type="file" id="key_file" name="key_file" accept=".pdf,.txt,application/pdf,text/plain">
+    </div>
+    {% if can_read_paper %}
+      <label class="check-line">
+        <input type="checkbox" name="from_paper" value="true">
+        …or look for an “ANSWER KEY” block at the end of this paper's question PDF
+      </label>
+    {% endif %}
+    <div class="paper-meta">
+      Only the letters a–d are answers. Understood: <code>1-b 2-d</code>, <code>1. (b)</code>, <code>Q1: B</code>, <code>1) b</code>, tables with one row
+      per question, <code>12. Ans– (c)</code> lines with explanations, and keys with one column (or block) per booklet series A–D
+      {% if paper.series %}— this paper is series <strong>{{ paper.series }}</strong>{% else %}— this paper has no series set{% endif %}.
+      A key written with 1–4 instead of letters is refused.
+    </div>
+    <button type="submit">Preview the key</button>
+  </form>
+{% endblock %}

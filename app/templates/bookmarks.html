@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Bookmarks{% endblock %}
+{% block content %}
+  <h1>Bookmarks</h1>
+  <p class="paper-meta"><a href="/revision">← Revision</a></p>
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  <ul class="result-list">
+    {% for q, saved in rows %}
+      <li>
+        <a href="/questions/{{ q.id }}" class="result-row">
+          <span class="chip small">★</span>
+          <span class="result-text">
+            {{ list_text(q, user_language(request))|truncate(120) }}
+            <span class="paper-meta">
+              {{ subjects.get(q.subject_id, "") }}
+              {% if notes.get(q.id) %}· ✎ {{ notes[q.id]|truncate(80) }}{% endif %}
+            </span>
+          </span>
+        </a>
+      </li>
+    {% else %}
+      <li class="empty-state">
+        No bookmarks yet. When you're looking at a question's answer (after answering it in practice, or in your
+        results), use “Bookmark this question”.<br>
+        <a href="/practice" class="btn-link">Start practising</a>
+      </li>
+    {% endfor %}
+  </ul>
+{% endblock %}

@@ -1,0 +1,61 @@
+{# Shared leaderboard tables. Only the top rows and the viewer's own row are ever passed in. #}
+
+{% macro summary(board, me) %}
+  <p class="paper-meta">
+    {{ board.participants }} participant{{ "s" if board.participants != 1 else "" }}
+    {% if board.you %}
+      · you are <strong>#{{ board.you.rank }}</strong>
+      {% if board.percentile is not none %}— ahead of {{ board.percentile }}% of the other participants{% endif %}
+    {% endif %}
+  </p>
+  {% if not me.show_on_leaderboard %}
+    <p class="paper-meta">You've chosen not to be shown, so everyone else sees you as “Anonymous”. You still see your own rank.
+      <a href="/account">Change this in your profile</a>.</p>
+  {% endif %}
+{% endmacro %}
+
+{% macro test_table(board, duration) %}
+  <div class="table-wrap">
+    <table class="user-table board">
+      <tr><th>Rank</th><th>Name</th><th>Score</th><th>Percent</th><th>Time taken</th></tr>
+      {% for e in board.top %}
+        <tr class="{{ 'you' if e.is_you }}">
+          <td>{{ e.rank }}</td><td>{{ e.name }}{% if e.is_you %} <strong>(you)</strong>{% endif %}</td>
+          <td>{{ e.score|marks }} <span class="paper-meta">of {{ e.max|marks }}</span></td><td>{{ e.percent|marks }}%</td>
+          <td>{{ e.seconds|duration if e.seconds is not none else "—" }}</td>
+        </tr>
+      {% endfor %}
+      {% if board.you and not board.you_in_top %}
+        <tr class="gap"><td colspan="5" class="paper-meta">…</td></tr>
+        {% set e = board.you %}
+        <tr class="you">
+          <td>{{ e.rank }}</td><td>{{ e.name }} <strong>(you)</strong></td>
+          <td>{{ e.score|marks }} <span class="paper-meta">of {{ e.max|marks }}</span></td><td>{{ e.percent|marks }}%</td>
+          <td>{{ e.seconds|duration if e.seconds is not none else "—" }}</td>
+        </tr>
+      {% endif %}
+    </table>
+  </div>
+{% endmacro %}
+
+{% macro weekly_table(board, duration) %}
+  <div class="table-wrap">
+    <table class="user-table board">
+      <tr><th>Rank</th><th>Name</th><th>Average score</th><th>Full-length tests</th><th>Average time</th></tr>
+      {% for e in board.top %}
+        <tr class="{{ 'you' if e.is_you }}">
+          <td>{{ e.rank }}</td><td>{{ e.name }}{% if e.is_you %} <strong>(you)</strong>{% endif %}</td>
+          <td>{{ e.percent|marks }}%</td><td>{{ e.tests }}</td><td>{{ e.seconds|duration if e.seconds is not none else "—" }}</td>
+        </tr>
+      {% endfor %}
+      {% if board.you and not board.you_in_top %}
+        <tr class="gap"><td colspan="5" class="paper-meta">…</td></tr>
+        {% set e = board.you %}
+        <tr class="you">
+          <td>{{ e.rank }}</td><td>{{ e.name }} <strong>(you)</strong></td>
+          <td>{{ e.percent|marks }}%</td><td>{{ e.tests }}</td><td>{{ e.seconds|duration if e.seconds is not none else "—" }}</td>
+        </tr>
+      {% endif %}
+    </table>
+  </div>
+{% endmacro %}

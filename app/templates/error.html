@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+  <div class="error-page">
+    <div class="error-code" aria-hidden="true">{{ status }}</div>
+    <h1>{{ title }}</h1>
+    <p class="page-sub">{{ message }}</p>
+    {% if detail %}<p class="paper-meta">{{ detail }}</p>{% endif %}
+    <p class="error-actions">
+      <a href="{{ '/' if request.state.user else '/login' }}" class="btn-link">{{ "Go to the home page" if request.state.user else "Go to log in" }}</a>
+      <a href="javascript:history.back()" class="btn-link secondary-link">Go back</a>
+    </p>
+  </div>
+{% endblock %}

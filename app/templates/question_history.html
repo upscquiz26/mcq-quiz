@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}History — Q{{ q.question_number }}{% endblock %}
+{% block content %}
+  <h1>History of Q{{ q.question_number }}</h1>
+  <p class="paper-meta">
+    <a href="/review/{{ paper.id }}#q{{ q.question_number }}">← Back to {{ paper.title }}</a>.
+    A copy is saved just before every change, so the first entry is the question as it was imported.
+    Restoring a version puts its content back and sends the question to review again.
+  </p>
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  <div class="q-card reviewed">
+    <div class="q-num">Current</div>
+    <p>{{ q.text }}</p>
+    <ol type="a" class="version-options">
+      <li>{{ q.option_a }}</li><li>{{ q.option_b }}</li><li>{{ q.option_c }}</li><li>{{ q.option_d }}</li>
+    </ol>
+    <p class="paper-meta">Answer: {{ q.correct_answer or "—" }} · Status: {{ q.status }}</p>
+  </div>
+
+  {% for row in rows %}
+    <div class="q-card">
+      <div class="q-num">
+        Version {{ row.version.version_no }} — {{ row.version.reason }}
+        <span class="paper-meta">saved {{ row.version.changed_at.strftime("%d %b %Y, %H:%M") }} UTC by {{ row.author }}</span>
+      </div>
+      <p>{{ row.snapshot.text }}</p>
+      <ol type="a" class="version-options">
+        <li>{{ row.snapshot.option_a }}</li><li>{{ row.snapshot.option_b }}</li>
+        <li>{{ row.snapshot.option_c }}</li><li>{{ row.snapshot.option_d }}</li>
+      </ol>
+      <p class="paper-meta">Answer: {{ row.snapshot.correct_answer or "—" }}</p>
+      {% if row.differs %}
+        <p class="paper-meta">Differs from current in: {{ row.differs|join(", ") }}</p>
+        <form method="post" action="/review/{{ paper.id }}/question/{{ q.id }}/restore/{{ row.version.id }}"
+              onsubmit="return confirm('Restore version {{ row.version.version_no }}? The question will need to be confirmed again.');">
+          <button type="submit" class="secondary">Restore this version</button>
+        </form>
+      {% else %}
+        <p class="paper-meta">Same as the current content.</p>
+      {% endif %}
+    </div>
+  {% else %}
+    <p class="empty-state">No edits yet.</p>
+  {% endfor %}
+{% endblock %}

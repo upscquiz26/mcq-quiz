@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Reported questions{% endblock %}
+{% block content %}
+  <p class="paper-meta"><a href="/admin">← Admin dashboard</a></p>
+  <div class="page-head"><div><h1>Reported questions</h1><p class="page-sub">Problems students have flagged, grouped by question.</p></div></div>
+
+  {% if flash %}
+    <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
+  {% endif %}
+
+  <p class="paper-meta">
+    Students can report a question once they've been shown its answer. Reporting changes nothing for them. To fix a question,
+    edit it on the paper's review page (or quarantine it there), then close the report here.
+  </p>
+
+  <p class="filter-row">
+    {% for key, label in filters.items() %}
+      <a href="?show={{ key }}" class="{{ 'on' if show == key }}">{{ label }}{% if key != "all" %} ({{ counts[key] }}){% endif %}</a>{{ " · " if not loop.last }}
+    {% endfor %}
+  </p>
+
+  {% for q, items in groups %}
+    {% set open_items = items|selectattr("status", "equalto", "open")|list %}
+    <section class="report-card">
+      <h2>{{ papers.get(q.paper_id, "Paper") }} — Q{{ q.question_number }}</h2>
+      <p class="paper-meta">
+        Question status: {{ q.status }} ·
+        {% if q.status == "quarantined" %}<a href="/quarantine">Quarantine page</a>{% else %}<a href="/review/{{ q.paper_id }}#q{{ q.question_number }}">Open in review</a>{% endif %}
+      </p>
+      {% set shown = primary(q) %}
+      <p class="q-text" {% if shown[0] == "hi" %}lang="hi"{% endif %}>{{ shown[1]|truncate(240) }}</p>
+      <ul class="paper-list">
+        {% for letter, text in [("A", shown[2][0]), ("B", shown[2][1]), ("C", shown[2][2]), ("D", shown[2][3])] %}
+          <li>{% if letter == q.correct_answer %}<strong>{{ letter }}. {{ text }} — marked correct</strong>{% else %}{{ letter }}. {{ text }}{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% if q.explanation %}<p class="paper-meta">Explanation: {{ q.explanation|truncate(300) }}</p>{% endif %}
+
+      <h3>{{ items|length }} report{{ "s" if items|length != 1 else "" }}{% if open_items %} · {{ open_items|length }} open{% endif %}</h3>
+      <ul class="paper-list">
+        {% for r in items %}
+          <li>
+            <strong>{{ kinds.get(r.kind, r.kind) }}</strong>{% if r.language %} <span class="chip small">{{ {"en": "English version", "hi": "Hindi version", "both": "Both versions"}.get(r.language, r.language) }}</span>{% endif %}
+            <span class="paper-meta">
+              · {{ users.get(r.user_id, "a student") }} · {{ r.created_at.strftime("%d %b %Y, %H:%M") }} UTC
+              {% if r.answer_at_report and r.answer_at_report != q.correct_answer %}
+                · the answer key was {{ r.answer_at_report }} then, {{ q.correct_answer }} now
+              {% endif %}
+            </span>
+            {% if r.note %}<div>“{{ r.note }}”</div>{% endif %}
+            {% if r.status != "open" %}
+              <div class="paper-meta">
+                {{ "Resolved" if r.status == "resolved" else "Dismissed" }} by {{ users.get(r.resolved_by, "an admin") }}
+                on {{ r.resolved_at.strftime("%d %b %Y") if r.resolved_at else "" }}{% if r.resolution_note %} — {{ r.resolution_note }}{% endif %}
+              </div>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+
+      {% if open_items %}
+        <form method="post" action="/admin/reports/question/{{ q.id }}/close" class="report-actions">
+          <label for="note-{{ q.id }}">Note (optional)</label>
+          <input type="text" id="note-{{ q.id }}" name="note" maxlength="500" placeholder="e.g. answer key corrected to C">
+          <div class="row" style="gap:8px">
+            <button type="submit" name="status" value="resolved">Resolve {{ "all " ~ open_items|length if open_items|length > 1 else "" }}</button>
+            <button type="submit" name="status" value="dismissed" class="secondary">Dismiss {{ "all " ~ open_items|length if open_items|length > 1 else "" }}</button>
+          </div>
+        </form>
+      {% endif %}
+    </section>
+  {% else %}
+    <div class="empty-state">
+      {% if show == "open" %}No open reports. Nothing needs your attention.{% else %}Nothing to show for this filter.{% endif %}
+    </div>
+  {% endfor %}
+  {% if hidden_groups %}<p class="paper-meta">{{ hidden_groups }} more question(s) not shown — close some to see them.</p>{% endif %}
+{% endblock %}
