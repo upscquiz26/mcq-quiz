@@ -65,12 +65,12 @@ RULES
 - Copy question and option text exactly as written. Do not rephrase, fix, or improve.
 - Extract BOTH languages when the document has both. Put English in question and
   options. Put Hindi in question_hi and options_hi, in Devanagari (Unicode).
-- Never translate. Never transliterate. If a question exists in only one
-  language in the document, leave the other language's fields null. Do not create
-  a Hindi or English version yourself.
+- Never translate. Never transliterate. Never invent Hindi or English. If a
+  question exists in only one language in the document, leave the other
+  language's fields null. Do not create a Hindi or English version yourself.
 - Do not correct Hindi spelling, matras or grammar. Copy it as printed.
-- Never guess an answer. Use correct_answer only if the answer key or the
-  document itself states it. Otherwise set it to null.
+- Never guess an answer. Never guess correct_answer. Use it only if the answer
+  key or the document itself states it. Otherwise set it to null.
 - Same for explanation and explanation_hi: copy if present, else null.
   Do not write your own.
 - Keep statement lists inside the question text, one per line, using \\n.
@@ -83,9 +83,12 @@ RULES
 - subject must be one of: {subjects}. Use null if unsure.
 - page = the PDF page number where the question starts.
 - Output ONLY valid JSON. No commentary, no markdown.
+- schema_version must be 2.
+- You may paste several replies together; each reply must be its own JSON object.
+- Hindi options labelled क–घ must be emitted as keys a–d (the app will also accept क–घ).
 
 PROCESS
-- Do 25 questions per reply, then stop and wait for me to say "next".
+- Prefer 25 questions per object, then stop and wait for me to say "next".
 - At the end of each reply, add one line outside the JSON:
   "Covered questions X to Y."
 
@@ -148,8 +151,64 @@ class Report:
     def ok(self) -> bool:
         return not self.errors and bool(self.questions)
 
+    def drop_invalid_questions(self) -> int:
+        """Remove questions that had errors so the rest can be imported. File-level errors (no number) stay."""
+        bad = {i.number for i in self.errors if i.number is not None}
+        dropped = 0
+        for n in [n for n in self.questions if n in bad]:
+            del self.questions[n]
+            dropped += 1
+        self.issues = [i for i in self.issues if not (i.level == "error" and i.number is not None)]
+        return dropped
+
+    @property
+    def importable_despite_errors(self) -> bool:
+        """True when every remaining error is tied to a question number, so those can be skipped."""
+        bad = {i.number for i in self.errors if i.number is not None}
+        return bool(self.questions) and all(i.number is not None for i in self.errors) and any(n not in bad for n in self.questions)
+
+    def renumber_to_append(self, start: int) -> dict[int, int]:
+        """Give every question a new number from `start` upwards, in current number order. Used when a second
+        JSON batch reused 1, 2, 3… but should be added after the questions already on the paper."""
+        mapping, rebuilt, n = {}, {}, start
+        for old in sorted(self.questions):
+            q = self.questions[old]
+            q["number"] = n
+            mapping[old] = n
+            rebuilt[n] = q
+            n += 1
+        self.questions = rebuilt
+        self.existing = {}
+        return mapping
+
     def add(self, level, message, part=None, number=None):
         self.issues.append(Issue(level, message, part, number))
+
+
+# Hindi option letters as printed in many papers; mapped in order to a–d (never 1–4 — that would be guessing).
+DEVANAGARI_OPTION = {"क": "a", "ख": "b", "ग": "c", "घ": "d"}
+
+
+def _canon_option_key(raw) -> str | None:
+    """a–d, or क–घ / '(क)', else None. Digit keys are left as-is so the caller can refuse them."""
+    s = re.sub(r"[()[\]\s.]", "", str(raw).strip())
+    if s.lower() in "abcd":
+        return s.lower()
+    return DEVANAGARI_OPTION.get(s)
+
+
+def _parse_answer_letter(value) -> str | None:
+    """'c', '(B)', 'ग', '(ख)' -> A–D. None if missing or not a letter (including 1–4)."""
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str):
+        return None
+    s = value.strip()
+    if re.fullmatch(r"\(?\s*[a-dA-D]\s*[).]?", s):
+        return re.sub(r"[^a-dA-D]", "", s).upper()
+    inner = re.sub(r"[()[\]\s.]", "", s)
+    mapped = DEVANAGARI_OPTION.get(inner)
+    return mapped.upper() if mapped else None
 
 
 # --------------------------------------------------------------------------- reading one part
@@ -164,41 +223,114 @@ def _clean_text(value: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _skip_noise(text: str, pos: int, report: Report | None = None, name: str | None = None) -> int:
+    """Advance past whitespace, markdown fences and a Covered-questions line so concatenated replies can be decoded."""
+    n = len(text)
+    while pos < n:
+        while pos < n and text[pos] in " \t\r\n":
+            pos += 1
+        if text.startswith("```", pos):
+            pos += 3
+            if text[pos:pos + 4].lower() == "json":
+                pos += 4
+            continue
+        rest = text[pos:].lstrip("\"'")
+        found = COVERED.match(rest)
+        if found:
+            if report is not None:
+                report.covered.append((name or "", int(found.group(1)), int(found.group(2))))
+            nl = text.find("\n", pos)
+            pos = n if nl == -1 else nl + 1
+            continue
+        break
+    return pos
+
+
+def _salvage_question_objects(text: str) -> list[dict]:
+    """Complete question objects recovered from a truncated `questions` array. Incomplete tail is ignored."""
+    marker = re.search(r'"questions"\s*:\s*\[', text)
+    if not marker:
+        return []
+    pos, found, decoder = marker.end(), [], json.JSONDecoder()
+    while pos < len(text):
+        while pos < len(text) and text[pos] in " \t\r\n,":
+            pos += 1
+        if pos >= len(text) or text[pos] in "]}":
+            break
+        if text[pos] != "{":
+            break
+        try:
+            value, end = decoder.raw_decode(text, pos)
+        except json.JSONDecodeError:
+            break
+        if isinstance(value, dict):
+            found.append(value)
+        pos = end
+    return found
+
+
 def _load_json(name: str, raw: bytes | str, report: Report):
-    """Finds and decodes the JSON in a pasted/uploaded part, tolerating a ``` fence and a trailing 'Covered questions X to Y.'
-    line (the prompt asks the AI for one). Returns the decoded value or None (with an error recorded)."""
+    """Finds and decodes every JSON object/array in a pasted/uploaded part.
+
+    Tolerates ``` fences, several concatenated replies, and a trailing 'Covered questions X to Y.' line.
+    Returns a list of decoded values (empty if nothing usable was found). A truncated tail records an error
+    but does not throw away objects (or complete questions) already parsed."""
     if isinstance(raw, bytes):
         try:
             text = raw.decode("utf-8-sig")
         except UnicodeDecodeError:
             report.add("error", "This part isn't UTF-8 text.", name)
-            return None
+            return []
     else:
         text = raw.lstrip("\ufeff")
+
     starts = [i for i in (text.find("{"), text.find("[")) if i != -1]
     if not starts:
         report.add("error", "No JSON was found in this part (no { or [ at all).", name)
-        return None
+        return []
     start = min(starts)
     before = text[:start].strip()
     if before and not set(before) <= set("`json \n\t"):
         report.add("warning", "Text before the JSON was ignored.", name)
-    try:
-        value, end = json.JSONDecoder().raw_decode(text, start)
-    except json.JSONDecodeError as e:
-        numbers = NUMBER_KEY.findall(text[:e.pos])
-        near = f" (near question {numbers[-1]})" if numbers else ""
-        report.add("error", f"Invalid JSON: {e.msg} at line {e.lineno}, column {e.colno}{near}.", name,
-                   int(numbers[-1]) if numbers else None)
-        return None
-    trailing = text[end:].replace("```", "").strip()
-    if trailing:
-        found = COVERED.search(trailing)
-        if found:
-            report.covered.append((name, int(found.group(1)), int(found.group(2))))
-        else:
-            report.add("warning", "Text after the JSON was ignored: " + trailing[:80] + ("…" if len(trailing) > 80 else ""), name)
-    return value
+
+    blobs, pos, decoder = [], start, json.JSONDecoder()
+    while pos < len(text):
+        pos = _skip_noise(text, pos, report, name)
+        if pos >= len(text):
+            break
+        if text[pos] not in "{[":
+            nxt = [i for i in (text.find("{", pos), text.find("[", pos)) if i != -1]
+            if not nxt:
+                leftover = COVERED.sub("", text[pos:].replace("```", "")).strip().strip("\"'")
+                if leftover:
+                    report.add("warning", "Text after the JSON was ignored: " + leftover[:80]
+                               + ("…" if len(leftover) > 80 else ""), name)
+                break
+            pos = min(nxt)
+        try:
+            value, end = decoder.raw_decode(text, pos)
+        except json.JSONDecodeError as e:
+            salvaged = _salvage_question_objects(text if not blobs else text[pos:])
+            numbers = NUMBER_KEY.findall(text[: getattr(e, "pos", 0) or len(text)])
+            near = f" (near question {numbers[-1]})" if numbers else ""
+            msg = f"Invalid JSON: {e.msg} at line {e.lineno}, column {e.colno}{near}."
+            if salvaged and not blobs:
+                msg += f" Kept {len(salvaged)} complete question{'s' if len(salvaged) != 1 else ''} before the break."
+                report.add("error", msg, name, int(numbers[-1]) if numbers else None)
+                blobs.append({"schema_version": 2, "questions": salvaged})
+                return blobs
+            if blobs:
+                report.add("error", f"Invalid JSON in the rest of this part: {e.msg}{near}. "
+                           "Earlier JSON objects were kept.", name,
+                           int(numbers[-1]) if numbers else None)
+                return blobs
+            report.add("error", msg, name, int(numbers[-1]) if numbers else None)
+            return []
+        blobs.append(value)
+        pos = end
+    if blobs:
+        report.add("info", f"{len(blobs)} JSON object{'s' if len(blobs) != 1 else ''} in {name}.", name)
+    return blobs
 
 
 def _as_int(value):
@@ -249,13 +381,30 @@ def _check_question(item, index: int, part: str, report: Report, subject_names: 
         if not isinstance(raw, dict):
             err(f"\"{key}\" must be an object with the keys a, b, c and d.")
             return {}
-        keys = {str(k).strip().lower(): v for k, v in raw.items()}
+        keys_raw = {}
+        for k, v in raw.items():
+            canon = _canon_option_key(k)
+            label = str(k).strip()
+            if canon is None:
+                keys_raw[label] = v
+            elif canon in keys_raw:
+                err(f"\"{key}\" has two keys that both mean option {canon} ({label!r} and another).")
+            else:
+                keys_raw[canon] = v
+        mapped_devanagari = any(
+            re.sub(r"[()[\]\s.]", "", str(k).strip()) in DEVANAGARI_OPTION for k in raw
+        )
+        if mapped_devanagari:
+            warn("Hindi option keys क–घ were mapped to a–d.")
+        keys = keys_raw
         if all(v is None or (isinstance(v, str) and not v.strip()) for v in keys.values()):
             return {}                                          # all four empty: the language is simply not there
-        if len(keys) != len(raw):
-            err(f"\"{key}\" has two keys that differ only by case or spacing.")
         missing = [k for k in "abcd" if k not in keys]
         extra = sorted(set(keys) - set("abcd"))
+        if extra and extra == sorted(extra) and set(extra) <= {"1", "2", "3", "4"}:
+            err(f"\"{key}\" uses numbered keys ({', '.join(extra)}) — map them to a, b, c and d; the app will not guess.")
+            extra = []
+            missing = [k for k in "abcd" if k not in keys]
         if missing:
             err(f"Missing {who}option" + ("s " if len(missing) > 1 else " ") + ", ".join(missing) + " — each language needs exactly a, b, c and d.")
         if extra:
@@ -300,10 +449,15 @@ def _check_question(item, index: int, part: str, report: Report, subject_names: 
 
     answer = item.get("correct_answer")
     if answer is not None and answer != "":
-        if isinstance(answer, str) and re.fullmatch(r"\(?\s*[a-dA-D]\s*[).]?", answer.strip()):
-            answer = re.sub(r"[^a-dA-D]", "", answer).upper()
+        letter = _parse_answer_letter(answer)
+        if letter:
+            answer = letter
         else:
-            err(f"\"correct_answer\" must be a, b, c, d or null (got {json.dumps(answer, ensure_ascii=False)[:30]}).")
+            shown = json.dumps(answer, ensure_ascii=False)[:30]
+            if isinstance(answer, str) and re.fullmatch(r"\(?\s*[1-4]\s*\)?", answer.strip()):
+                err(f"\"correct_answer\" must be a, b, c, d (or क–घ), not 1–4 (got {shown}).")
+            else:
+                err(f"\"correct_answer\" must be a, b, c, d or null (got {shown}).")
             answer = None
     else:
         answer = None
@@ -477,55 +631,57 @@ def build_report(parts: list[tuple[str, bytes | str]], subject_names: list[str],
         return report
     merged: dict[int, dict] = {}
     for name, raw in parts:
-        value = _load_json(name, raw, report)
-        if value is None:
+        blobs = _load_json(name, raw, report)
+        if not blobs:
             report.parts.append({"name": name, "questions": 0, "first": None, "last": None})
             continue
-        paper_block, items = {}, None
-        if isinstance(value, list):
-            items = value
-            report.add("warning", "This part is a bare list of questions (no \"paper\" block).", name)
-        elif isinstance(value, dict):
-            version = value.get("schema_version")
-            if version is None:
-                report.add("warning", "No \"schema_version\" — assuming version 1.", name)
-            elif version not in SCHEMA_VERSIONS or isinstance(version, bool):
-                report.add("error", f"schema_version {json.dumps(version)[:20]} isn't supported (expected 1 or {SCHEMA_VERSION}).", name)
-                report.parts.append({"name": name, "questions": 0, "first": None, "last": None})
+        for bi, value in enumerate(blobs, start=1):
+            part_name = name if len(blobs) == 1 else f"{name} #{bi}"
+            paper_block, items = {}, None
+            if isinstance(value, list):
+                items = value
+                report.add("warning", "This part is a bare list of questions (no \"paper\" block).", part_name)
+            elif isinstance(value, dict):
+                version = value.get("schema_version")
+                if version is None:
+                    report.add("warning", "No \"schema_version\" — assuming version 1.", part_name)
+                elif version not in SCHEMA_VERSIONS or isinstance(version, bool):
+                    report.add("error", f"schema_version {json.dumps(version)[:20]} isn't supported (expected 1 or {SCHEMA_VERSION}).", part_name)
+                    report.parts.append({"name": part_name, "questions": 0, "first": None, "last": None})
+                    continue
+                if isinstance(value.get("paper"), dict):
+                    paper_block = value["paper"]
+                items = value.get("questions")
+            if not isinstance(items, list):
+                report.add("error", "\"questions\" must be a list.", part_name)
+                report.parts.append({"name": part_name, "questions": 0, "first": None, "last": None})
                 continue
-            if isinstance(value.get("paper"), dict):
-                paper_block = value["paper"]
-            items = value.get("questions")
-        if not isinstance(items, list):
-            report.add("error", "\"questions\" must be a list.", name)
-            report.parts.append({"name": name, "questions": 0, "first": None, "last": None})
-            continue
-        for key, val in paper_block.items():
-            if val in (None, ""):
-                continue
-            if key in report.paper and report.paper[key] != val:
-                report.add("warning", f"\"paper.{key}\" differs between parts ({json.dumps(report.paper[key], ensure_ascii=False)[:40]} "
-                                      f"vs {json.dumps(val, ensure_ascii=False)[:40]}) — the first part's value is used.", name)
-            else:
-                report.paper.setdefault(key, val)
+            for key, val in paper_block.items():
+                if val in (None, ""):
+                    continue
+                if key in report.paper and report.paper[key] != val:
+                    report.add("warning", f"\"paper.{key}\" differs between parts ({json.dumps(report.paper[key], ensure_ascii=False)[:40]} "
+                                          f"vs {json.dumps(val, ensure_ascii=False)[:40]}) — the first part's value is used.", part_name)
+                else:
+                    report.paper.setdefault(key, val)
 
-        seen_here = []
-        for index, item in enumerate(items, start=1):
-            q = _check_question(item, index, name, report, by_lower)
-            if q is None:
-                continue
-            seen_here.append(q["number"])
-            if q["number"] in merged:
-                _merge(merged[q["number"]], q, report, later_wins)
-            else:
-                merged[q["number"]] = q
-        report.parts.append({"name": name, "questions": len(seen_here), "first": min(seen_here, default=None),
-                             "last": max(seen_here, default=None)})
+            seen_here = []
+            for index, item in enumerate(items, start=1):
+                q = _check_question(item, index, part_name, report, by_lower)
+                if q is None:
+                    continue
+                seen_here.append(q["number"])
+                if q["number"] in merged:
+                    _merge(merged[q["number"]], q, report, later_wins)
+                else:
+                    merged[q["number"]] = q
+            report.parts.append({"name": part_name, "questions": len(seen_here), "first": min(seen_here, default=None),
+                                 "last": max(seen_here, default=None)})
 
     report.questions = dict(sorted(merged.items()))
     # Every part is expected to say what it covered; if the AI did and the parts disagree, that's worth showing.
     for name, first, last in report.covered:
-        got = [q for q in report.questions.values() if q["part"] == name]
+        got = [q for q in report.questions.values() if q["part"] == name or q["part"].startswith(name + " #")]
         actual = sorted(q["number"] for q in got)
         wanted = list(range(first, last + 1))
         missing = [n for n in wanted if n not in actual and n not in merged]
@@ -611,13 +767,67 @@ def flags_for(q: dict) -> list[str]:
     return flags
 
 
-def save_questions(db, user, report: Report, paper: models.Paper, *, overwrite_needs_review: bool = False) -> dict:
-    """Writes the merged questions into `paper` (the caller commits). Existing numbers are skipped, except that a question
-    still waiting for review may be overwritten on request (its old content is kept in the version history). Returns counts."""
+def _blank(value) -> bool:
+    return not (value or "").strip()
+
+
+def _add_flag(q: models.Question, flag: str) -> None:
+    current = [f for f in (q.ocr_flags or "").split(",") if f]
+    if flag not in current:
+        current.append(flag)
+        q.ocr_flags = ",".join(current) or None
+
+
+def _fill_blanks(old: models.Question, q: dict) -> bool:
+    """Write Hindi / missing answer / missing explanation only. Never touch English wording. Returns whether anything changed."""
+    changed, content = False, False
+    hi = q["options_hi"]
+    if _blank(old.question_hi) and q.get("text_hi"):
+        old.question_hi, content = q["text_hi"], True
+    for letter, attr in (("a", "option_a_hi"), ("b", "option_b_hi"), ("c", "option_c_hi"), ("d", "option_d_hi")):
+        if _blank(getattr(old, attr)) and hi.get(letter):
+            setattr(old, attr, hi[letter])
+            content = True
+    if _blank(old.explanation_hi) and q.get("explanation_hi"):
+        old.explanation_hi = q["explanation_hi"]
+        old.explanation_hi_status = "unverified"
+        content = True
+    if _blank(old.explanation) and q.get("explanation"):
+        old.explanation = q["explanation"]
+        old.explanation_status = "unverified"
+        changed = True
+    if not old.correct_answer and q.get("answer"):
+        old.correct_answer = q["answer"]
+        old.answer_source = "json"
+        _add_flag(old, "ai_answer")
+        changed = True
+    if q.get("uncertain"):
+        old.uncertain = True
+        _add_flag(old, "ai_uncertain")
+        changed = True
+    if not old.page_number and q.get("page"):
+        old.page_number = q["page"]
+        changed = True
+    if not changed and not content:
+        return False
+    if content or old.status in (models.QStatus.VERIFIED, models.QStatus.LIVE):
+        old.status = models.QStatus.NEEDS_REVIEW
+        old.reviewed_by = None
+        old.reviewed_at = None
+        old.flags_acknowledged = False
+    return True
+
+
+def save_questions(db, user, report: Report, paper: models.Paper, *, overwrite_needs_review: bool = False,
+                   fill_blanks: bool = False) -> dict:
+    """Writes the merged questions into `paper` (the caller commits).
+
+    New numbers are created. Existing numbers are skipped, unless `overwrite_needs_review` replaces a row still
+    waiting for review, or `fill_blanks` writes only empty Hindi / answer / explanation fields (never English text)."""
     subjects = {s.name: s.id for s in db.query(models.Subject).all()}
     topic_ids = {(t.subject_id, t.name.lower()): t.id for t in db.query(models.Topic).all()}
     present = {q.question_number: q for q in db.query(models.Question).filter_by(paper_id=paper.id).all()}
-    counts = {"created": 0, "overwritten": 0, "skipped_existing": 0}
+    counts = {"created": 0, "overwritten": 0, "filled": 0, "skipped_existing": 0}
     saved: list[models.Question] = []
     for number, q in report.questions.items():
         subject_id = subjects.get(q["subject"]) if q["subject"] else None
@@ -648,6 +858,17 @@ def save_questions(db, user, report: Report, paper: models.Paper, *, overwrite_n
                 setattr(old, k, v)
             saved.append(old)
             counts["overwritten"] += 1
+        elif fill_blanks:
+            versions.snapshot(db, old, user, "filled from JSON import")
+            if _fill_blanks(old, q):
+                saved.append(old)
+                counts["filled"] += 1
+            else:
+                last = (db.query(models.QuestionVersion).filter_by(question_id=old.id)
+                        .order_by(models.QuestionVersion.version_no.desc()).first())
+                if last:
+                    db.delete(last)
+                counts["skipped_existing"] += 1
         else:
             counts["skipped_existing"] += 1
     for row in saved:

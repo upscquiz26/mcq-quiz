@@ -6,7 +6,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app import audit, duplicates, ingest, key_parse, language, models, sample_audit, subject_hints, subject_templates, versions
@@ -63,6 +63,7 @@ def review_paper(request: Request, paper_id: int, show: str = "all", sort: str =
         "clean": sum(1 for q in active if q.status in TO_CONFIRM and not q.ocr_flags and q.correct_answer
                      and q.answer_source != "json"),
         "ai": sum(1 for q in active if q.source == "ai_json"),
+        "ai_answers": sum(1 for q in active if q.answer_source == "json"),
         "no_subject": sum(1 for q in active if not q.subject_id),
         "suggested": sum(1 for q in active if not q.subject_id and q.suggested_subject_id),
         "quarantined": len(every) - len(active),
@@ -80,6 +81,8 @@ def review_paper(request: Request, paper_id: int, show: str = "all", sort: str =
         shown = [q for q in active if q.ocr_flags]
     elif show == "no_subject":
         shown = [q for q in active if not q.subject_id]
+    elif show == "ai_answers":
+        shown = [q for q in active if q.answer_source == "json"]
     else:
         show, shown = "all", active
 
@@ -110,6 +113,7 @@ def review_paper(request: Request, paper_id: int, show: str = "all", sort: str =
             "blockers": pool.publish_blockers(db, paper),
             "live_count": sum(1 for q in active if q.status == QStatus.LIVE),
             "held_back": sum(1 for q in active if q.status == QStatus.VERIFIED and pool.needs_snapshot(q)),
+            "next_number": (max((q.question_number or 0) for q in every) + 1) if every else 1,
             "flash": request.session.pop("flash", None),
         },
     )
@@ -470,6 +474,131 @@ def quarantine_question(
                   detail={"number": q.question_number, "reason": reason})
         db.commit()
     flash(request, f"Q{q.question_number} was quarantined. It can be restored from the Quarantine page.", "notice")
+    return RedirectResponse(url=f"/review/{paper_id}", status_code=303)
+
+
+def question_has_student_work(db: Session, question_id: int) -> bool:
+    return db.query(models.Response.id).filter_by(question_id=question_id).first() is not None
+
+
+def paper_has_student_work(db: Session, paper_id: int) -> bool:
+    if db.query(models.Attempt.id).filter_by(paper_id=paper_id).first():
+        return True
+    qids = [row[0] for row in db.query(models.Question.id).filter_by(paper_id=paper_id)]
+    if not qids:
+        return False
+    return db.query(models.Response.id).filter(models.Response.question_id.in_(qids)).first() is not None
+
+
+def purge_question(db: Session, q: models.Question) -> None:
+    """Remove a question and the rows that point at it. The audit log is kept."""
+    qid = q.id
+    db.query(models.QuestionVersion).filter_by(question_id=qid).delete()
+    db.query(models.QuestionDuplicate).filter(or_(
+        models.QuestionDuplicate.question_id == qid,
+        models.QuestionDuplicate.other_id == qid,
+    )).delete()
+    db.query(models.QuestionDuplicate).filter_by(merged_into=qid).update(
+        {models.QuestionDuplicate.merged_into: None}, synchronize_session=False
+    )
+    db.query(models.QuestionSource).filter(or_(
+        models.QuestionSource.question_id == qid,
+        models.QuestionSource.from_question_id == qid,
+    )).delete()
+    db.query(models.RevisionItem).filter_by(question_id=qid).delete()
+    db.query(models.QuestionBookmark).filter_by(question_id=qid).delete()
+    db.query(models.QuestionNote).filter_by(question_id=qid).delete()
+    db.query(models.QuestionReport).filter_by(question_id=qid).delete()
+    db.query(models.AnswerSuspicion).filter_by(question_id=qid).delete()
+    db.delete(q)
+
+
+@router.post("/review/{paper_id}/questions/add")
+def add_question(
+    request: Request,
+    paper_id: int,
+    question_number: str = Form(""),
+    text: str = Form(""),
+    option_a: str = Form(""),
+    option_b: str = Form(""),
+    option_c: str = Form(""),
+    option_d: str = Form(""),
+    correct_answer: str = Form(""),
+    explanation: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Type a question into this paper. It starts as needs-review and is not shown to students until you confirm and publish."""
+    paper = _paper_or_404(db, paper_id)
+    if paper.status == "processing":
+        flash(request, "This paper is still being read — wait for it to finish, then add questions.")
+        return RedirectResponse(url=f"/review/{paper_id}", status_code=303)
+    text, option_a, option_b, option_c, option_d = (text.strip(), option_a.strip(), option_b.strip(),
+                                                     option_c.strip(), option_d.strip())
+    if not text or not all((option_a, option_b, option_c, option_d)):
+        flash(request, "A new question needs its text and all four options.")
+        return RedirectResponse(url=f"/review/{paper_id}#add-question", status_code=303)
+    existing = [n for (n,) in db.query(models.Question.question_number).filter_by(paper_id=paper_id)
+                if n is not None]
+    if question_number.strip():
+        try:
+            number = int(question_number.strip())
+        except ValueError:
+            flash(request, "Question number must be a whole number.")
+            return RedirectResponse(url=f"/review/{paper_id}#add-question", status_code=303)
+        if number < 1:
+            flash(request, "Question number must be 1 or more.")
+            return RedirectResponse(url=f"/review/{paper_id}#add-question", status_code=303)
+        if number in existing:
+            flash(request, f"Q{number} is already on this paper. Pick another number, or edit that question.")
+            return RedirectResponse(url=f"/review/{paper_id}#add-question", status_code=303)
+    else:
+        number = (max(existing) + 1) if existing else 1
+    answer = correct_answer.strip().upper()
+    if answer and answer not in ("A", "B", "C", "D"):
+        flash(request, "Correct answer must be A, B, C or D, or left blank.")
+        return RedirectResponse(url=f"/review/{paper_id}#add-question", status_code=303)
+    explanation = explanation.strip() or None
+    q = models.Question(
+        paper_id=paper_id, question_number=number, text=text,
+        option_a=option_a, option_b=option_b, option_c=option_c, option_d=option_d,
+        correct_answer=answer or None, explanation=explanation,
+        explanation_status="unverified" if explanation else None,
+        status=QStatus.NEEDS_REVIEW, source="manual", answer_source="manual" if answer else None,
+    )
+    language.refresh_flags(q)
+    db.add(q)
+    db.flush()
+    q.norm_hash = duplicates.norm_hash(q)
+    sample_audit.invalidate(paper)
+    subject_hints.suggest_for_paper(db, paper_id)
+    duplicates.scan(db, paper_id)
+    audit.log(db, request.state.user, "question.add", "question", q.id, paper_id=paper_id,
+              detail={"number": number, "source": "manual"})
+    db.commit()
+    flash(request, f"Q{number} was added. Confirm it before it can go live.", "notice")
+    return RedirectResponse(url=f"/review/{paper_id}#q{number}", status_code=303)
+
+
+@router.post("/review/{paper_id}/question/{question_id}/delete")
+def delete_question(request: Request, paper_id: int, question_id: int, db: Session = Depends(get_db)):
+    """Permanently remove a question that nobody has answered. If students have already met it, quarantine it instead."""
+    paper = _paper_or_404(db, paper_id)
+    q = _question_or_404(db, paper_id, question_id)
+    if question_has_student_work(db, q.id):
+        flash(request, f"Q{q.question_number} has student answers, so it can't be deleted. Quarantine it to take it out of circulation without erasing history.")
+        return RedirectResponse(url=f"/review/{paper_id}#q{q.question_number}", status_code=303)
+    number = q.question_number
+    image = q.source_image_path
+    purge_question(db, q)
+    sample_audit.invalidate(paper)
+    audit.log(db, request.state.user, "question.delete", "question", question_id, paper_id=paper_id,
+              detail={"number": number})
+    db.commit()
+    if image:
+        path = os.path.join(ingest.images_dir_for(paper_id), image)
+        if os.path.isfile(path):
+            os.remove(path)
+    flash(request, f"Q{number} was deleted.", "notice")
     return RedirectResponse(url=f"/review/{paper_id}", status_code=303)
 
 

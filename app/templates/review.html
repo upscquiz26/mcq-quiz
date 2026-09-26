@@ -5,16 +5,28 @@
     <meta http-equiv="refresh" content="3">
   {% endif %}
 
-  <h1>{{ paper.title }}</h1>
-  <p class="paper-meta">
-    {% if paper.source_type %}{{ {"official_pyq": "Official PYQ", "coaching_test": "Coaching test"}[paper.source_type] }}{% endif %}
-    {% if paper.source_name %}· {{ paper.source_name }}{% endif %}
-    {% if paper.test_name or paper.test_number %}· {{ paper.test_name or "" }} {{ paper.test_number or "" }}{% endif %}
-    {% if paper.series %}· Series {{ paper.series }}{% endif %}
-    {% if paper.marks_per_question %}· {{ paper.marks_per_question }} marks each{% endif %}
-    {% if paper.negative_fraction %}· −{{ (paper.negative_fraction * 100)|round(1)|string|replace(".0", "") }}% for a wrong answer{% endif %}
-    {% if paper.archived_at %}· <span class="flag">Archived</span>{% endif %}
-  </p>
+  <div class="page-head">
+    <div>
+      <h1>{{ paper.title }}</h1>
+      <p class="paper-meta">
+        {% if paper.source_type %}{{ {"official_pyq": "Official PYQ", "coaching_test": "Coaching test"}[paper.source_type] }}{% endif %}
+        {% if paper.source_name %}· {{ paper.source_name }}{% endif %}
+        {% if paper.test_name or paper.test_number %}· {{ paper.test_name or "" }} {{ paper.test_number or "" }}{% endif %}
+        {% if paper.series %}· Series {{ paper.series }}{% endif %}
+        {% if paper.marks_per_question %}· {{ paper.marks_per_question }} marks each{% endif %}
+        {% if paper.negative_fraction %}· −{{ (paper.negative_fraction * 100)|round(1)|string|replace(".0", "") }}% for a wrong answer{% endif %}
+        {% if paper.archived_at %}· <span class="flag">Archived</span>{% endif %}
+      </p>
+    </div>
+    {% if paper.status != "processing" and paper.status != "failed" %}
+      <div class="page-actions">
+        {% if paper.status == "ready" and not paper.archived_at %}
+          <a href="#add-json" class="btn-link">Add from JSON</a>
+        {% endif %}
+        <a href="#add-question" class="btn-link secondary-link">Add question</a>
+      </div>
+    {% endif %}
+  </div>
 
   {% if flash %}
     <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
@@ -117,6 +129,7 @@
         {% if show == "to_confirm" %}<span class="paper-meta">({{ "in question order" if sort == "number" else "warnings first" }} — <a href="?show=to_confirm{{ '' if sort == 'number' else '&sort=number' }}">{{ "warnings first" if sort == "number" else "question order" }}</a>)</span>{% endif %} ·
         <a href="?show=confirmed" class="{{ 'on' if show == 'confirmed' }}">Confirmed ({{ counts.verified }})</a> ·
         <a href="?show=flagged" class="{{ 'on' if show == 'flagged' }}">With warnings</a> ·
+        <a href="?show=ai_answers" class="{{ 'on' if show == 'ai_answers' }}">AI answers ({{ counts.ai_answers }})</a> ·
         <a href="?show=no_subject" class="{{ 'on' if show == 'no_subject' }}">No subject ({{ counts.no_subject }})</a>
       </span>
 
@@ -324,7 +337,7 @@
         <div class="review-form">
         {% set has_hi = q.question_hi or q.option_a_hi or q.option_b_hi or q.option_c_hi or q.option_d_hi %}
         {% set has_en = (q.text or "")|trim %}
-        <form method="post" action="/review/{{ paper.id }}/question/{{ q.id }}">
+        <form method="post" action="/review/{{ paper.id }}/question/{{ q.id }}" id="q-save-{{ q.id }}">
           <div class="{{ 'lang-split' if has_en and has_hi }}">
             {% if has_en or not has_hi %}
               <div class="lang-col">
@@ -419,26 +432,32 @@
               </label>
             </details>
           {% endif %}
-
-          <button type="submit">
-            {% if needs_confirm %}Confirm question
-            {% elif q.status == "live" %}Save changes (a changed live question returns to review)
-            {% else %}Save changes{% endif %}
-          </button>
         </form>
 
-        {% if not needs_confirm and q.status in ["verified", "live"] %}
-          <form method="post" action="/review/{{ paper.id }}/question/{{ q.id }}/reopen" class="inline-form"
-                onsubmit="return confirm('Send Q{{ q.question_number }} back to review?{% if q.status == "live" %} Students stop seeing it until you confirm it again.{% endif %}');">
-            <button type="submit" class="secondary">Review again</button>
+        <div class="q-footer">
+          <div class="q-actions">
+            <button type="submit" form="q-save-{{ q.id }}">
+              {% if needs_confirm %}Confirm question
+              {% elif q.status == "live" %}Save changes (a changed live question returns to review)
+              {% else %}Save changes{% endif %}
+            </button>
+            {% if not needs_confirm and q.status in ["verified", "live"] %}
+              <form method="post" action="/review/{{ paper.id }}/question/{{ q.id }}/reopen" class="inline-form"
+                    onsubmit="return confirm('Send Q{{ q.question_number }} back to review?{% if q.status == "live" %} Students stop seeing it until you confirm it again.{% endif %}');">
+                <button type="submit" class="secondary">Review again</button>
+              </form>
+            {% endif %}
+            <form method="post" action="/review/{{ paper.id }}/question/{{ q.id }}/delete" class="inline-form danger-action"
+                  onsubmit="return confirm('Permanently delete Q{{ q.question_number }}? If anyone has already answered it, this will be refused and you should quarantine it instead.');">
+              <button type="submit" class="danger">Delete question</button>
+            </form>
+          </div>
+          <form method="post" action="/review/{{ paper.id }}/question/{{ q.id }}/quarantine" class="quarantine-form"
+                onsubmit="return confirm('Quarantine Q{{ q.question_number }}? It stays in the database and can be restored.');">
+            <input type="text" name="reason" placeholder="Why is this question bad? (required)" required aria-label="Why is this question bad?">
+            <button type="submit" class="secondary">Quarantine</button>
           </form>
-        {% endif %}
-
-        <form method="post" action="/review/{{ paper.id }}/question/{{ q.id }}/quarantine" class="quarantine-form"
-              onsubmit="return confirm('Quarantine Q{{ q.question_number }}? It stays in the database and can be restored.');">
-          <input type="text" name="reason" placeholder="Why is this question bad? (required)" required>
-          <button type="submit" class="secondary">Quarantine</button>
-        </form>
+        </div>
         </div>
         </div>
       </div>
@@ -446,9 +465,72 @@
       <p class="empty-state">No questions to show{% if show != "all" %} for this filter{% endif %}.</p>
     {% endfor %}
 
+    <form method="post" action="/review/{{ paper.id }}/questions/add" class="tool-box" id="add-question">
+      <strong>Add one question by hand</strong>
+      <p class="page-sub">It waits for review like an imported question — students never see it until you confirm and publish.</p>
+      <div class="options-grid">
+        <div>
+          <label>Number</label>
+          <input type="number" name="question_number" min="1" value="{{ next_number }}" required>
+        </div>
+        <div>
+          <label>Correct answer (optional)</label>
+          <select name="correct_answer">
+            <option value="">Not set yet</option>
+            <option value="A">A</option>
+            <option value="B">B</option>
+            <option value="C">C</option>
+            <option value="D">D</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label>Question text</label>
+        <textarea name="text" required></textarea>
+      </div>
+      <div class="options-grid">
+        <div><label>Option A</label><input type="text" name="option_a" required></div>
+        <div><label>Option B</label><input type="text" name="option_b" required></div>
+        <div><label>Option C</label><input type="text" name="option_c" required></div>
+        <div><label>Option D</label><input type="text" name="option_d" required></div>
+      </div>
+      <div>
+        <label>Explanation (optional)</label>
+        <textarea name="explanation"></textarea>
+      </div>
+      <button type="submit">Add question</button>
+    </form>
+
+    {% if paper.status == "ready" and not paper.archived_at %}
+    <form method="post" enctype="multipart/form-data" action="/admin/import/json/validate" class="tool-box" id="add-json">
+      <strong>Add more questions from JSON</strong>
+      <p class="page-sub">
+        Paste another AI reply (or several) for this paper. You get a validation report first — nothing is saved until you import.
+        If that reply numbers questions from 1 again, choose <strong>Add as new questions</strong> on the report so they become Q{{ next_number }} onwards (otherwise they are skipped and the paper stays the same size).
+        Same rules as a full JSON import: every question stays <em>needs review</em>; AI answers are never bulk-confirmed.
+        Prompt and template: <a href="/admin/import/json?paper_id={{ paper.id }}">JSON import</a>.
+      </p>
+      <input type="hidden" name="target" value="{{ paper.id }}">
+      <div>
+        <label for="json-paste">Paste JSON</label>
+        <textarea id="json-paste" name="pasted" rows="8" style="font-family:Consolas,monospace;font-size:13px"
+                  placeholder='{ "schema_version": 2, "questions": [ … ] }'></textarea>
+      </div>
+      <div>
+        <label for="json-files">…or JSON files</label>
+        <input type="file" id="json-files" name="files" accept=".json,application/json,.txt" multiple>
+      </div>
+      <button type="submit">Check JSON</button>
+    </form>
+    {% endif %}
+
     <form method="post" action="/papers/{{ paper.id }}/{{ 'unarchive' if paper.archived_at else 'archive' }}" class="danger-zone"
           onsubmit="return confirm('{{ 'Restore' if paper.archived_at else 'Archive' }} this paper? Nothing is deleted.');">
       <button type="submit" class="secondary">{{ "Restore this paper" if paper.archived_at else "Archive this paper" }}</button>
+    </form>
+    <form method="post" action="/papers/{{ paper.id }}/delete" class="danger-zone"
+          onsubmit="return confirm('Permanently delete “{{ paper.title }}” and all its questions? If anyone has already sat it, this will be refused — archive it instead.');">
+      <button type="submit" class="danger">Delete this paper</button>
     </form>
   {% endif %}
 {% endblock %}

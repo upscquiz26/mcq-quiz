@@ -7,8 +7,9 @@ ingest.process_paper prefers this path and falls back to OCR (app/ocr_extract.py
 Per page:
   1. Drop oversized characters — the giant diagonal watermarks ("UPPCS ONE" ...) that would otherwise be
      sprinkled through every line.
-  2. Find the gutter between two columns from the widest empty vertical strip in the body of the page, and read each
-     column on its own (left, then right). Pages that don't have one are read as a single column.
+  2. Find the gutter between two columns from the widest empty vertical strip in the body of the page (or, on bilingual
+     papers, from where Hindi and English cluster), and read each column on its own. A Hindi column next to an English
+     column is dropped — this app reads English from PDFs. Pages that don't have a gutter are one column.
   3. Drop running headers and footers: lines in the top/bottom band of the page that repeat on many pages.
 Across pages the lines are joined into one stream and cut into questions:
   * a question starts at the line that begins with the NEXT expected number ("7." after question 6), and only once
@@ -33,7 +34,10 @@ TEXT_PAGE_SHARE = 0.5           # this share of pages must have text before the 
                                 # "space for rough work" pages have almost none, so this can't be too strict)
 WATERMARK_MIN_SIZE = 30.0       # pt: characters bigger than both this ...
 WATERMARK_FACTOR = 3.0          # ... and this many times the page's median size are watermark, not text
+TINY_SIZE_FACTOR = 0.65         # characters smaller than this share of the page's median size are overlay, not text
 BAND = 0.10                     # top/bottom share of the page searched for running headers and footers
+SCRIPT_MIN_WORDS = 12           # each script needs this many words before a bilingual gutter is trusted
+SCRIPT_SPLIT_MIN = 0.8          # share of Hindi/English words that must fall on opposite sides of the gutter
 REPEAT_SHARE = 0.4              # a header/footer line appears on at least this share of pages ...
 REPEAT_MIN_PAGES = 3            # ... and on at least this many
 GUTTER_RANGE = (0.35, 0.65)     # where, as a share of page width, a column gutter may sit
@@ -78,10 +82,77 @@ def _size_limit(sizes: list[float]) -> float:
     return max(WATERMARK_MIN_SIZE, WATERMARK_FACTOR * statistics.median(sizes)) if sizes else WATERMARK_MIN_SIZE
 
 
+def _faint_color(color) -> bool:
+    """True for grey overlay ink (emails, institute URLs drawn over the page), not black body text."""
+    if color is None:
+        return False
+    if isinstance(color, (int, float)):
+        return 0.05 < float(color) < 0.95
+    if isinstance(color, (list, tuple)):
+        if len(color) == 1:
+            return 0.05 < float(color[0]) < 0.95
+        if len(color) >= 3:
+            r, g, b = (float(x) for x in color[:3])
+            avg = (r + g + b) / 3
+            return avg > 0.08 and (max(r, g, b) - min(r, g, b) < 0.15)
+    return False
+
+
 def _cleaned(page):
-    """The page without watermark-sized characters."""
-    limit = _size_limit([c["size"] for c in page.chars])
-    return page.filter(lambda o: not (o.get("object_type") == "char" and o.get("size", 0) > limit))
+    """The page without watermarks: giant diagonal stamps, and the small grey overlays coaching PDFs print on top."""
+    sizes = [c["size"] for c in page.chars]
+    limit = _size_limit(sizes)
+    tiny = (statistics.median(sizes) if sizes else 11.0) * TINY_SIZE_FACTOR
+
+    def drop(o):
+        if o.get("object_type") != "char":
+            return False
+        size = o.get("size", 0)
+        return size > limit or size < tiny or _faint_color(o.get("non_stroking_color"))
+
+    return page.filter(lambda o: not drop(o))
+
+
+def _script_counts(text: str) -> tuple[int, int]:
+    """(latin letters, Devanagari letters) in text — used to tell the English column from the Hindi one."""
+    hi = len(DEVANAGARI.findall(text))
+    en = sum(1 for ch in text if ch.isascii() and ch.isalpha())
+    return en, hi
+
+
+def script_gutter_from_words(words: list[dict], page_width: float) -> float | None:
+    """x that splits a bilingual page (Hindi in one column, English in the other), or None if it isn't one.
+
+    Geometric empty-strip gutters fail when a title or watermark sits in the gap; the two scripts still cluster."""
+    hi_mids, en_mids = [], []
+    for w in words:
+        text = w.get("text") or ""
+        mid = (w["x0"] + w["x1"]) / 2
+        if DEVANAGARI.search(text):
+            hi_mids.append(mid)
+        elif any(ch.isascii() and ch.isalpha() for ch in text):
+            en_mids.append(mid)
+    if len(hi_mids) < SCRIPT_MIN_WORDS or len(en_mids) < SCRIPT_MIN_WORDS:
+        return None
+    lo, hi = int(min(hi_mids + en_mids)), int(max(hi_mids + en_mids))
+    if hi - lo < MIN_GUTTER:
+        return None
+    best, winners = 0, []
+    n = len(hi_mids) + len(en_mids)
+    for x in range(lo, hi + 1, 2):
+        en_right = sum(1 for m in en_mids if m >= x) + sum(1 for m in hi_mids if m < x)
+        en_left = sum(1 for m in en_mids if m < x) + sum(1 for m in hi_mids if m >= x)
+        score = max(en_right, en_left)
+        if score > best:
+            best, winners = score, [x]
+        elif score == best:
+            winners.append(x)
+    if not winners or best / n < SCRIPT_SPLIT_MIN:
+        return None
+    best_x = winners[len(winners) // 2]          # middle of the gap, not the first x that already separates
+    if not (0.25 * page_width < best_x < 0.75 * page_width):
+        return None
+    return float(best_x)
 
 
 def has_text_layer(pdf_path: str) -> bool:
@@ -109,6 +180,9 @@ def find_gutter(page, layout: str = "auto") -> float | None:
     height, width = bottom - top, x1 - x0
     words = [w for w in page.extract_words()
              if top + BAND * height <= (w["top"] + w["bottom"]) / 2 <= bottom - BAND * height]
+    bilingual = script_gutter_from_words(words, width)
+    if bilingual is not None:
+        return bilingual
     if len(words) < MIN_BODY_WORDS:
         return None if layout == "auto" else x0 + width / 2
     lo, hi = int(x0 + GUTTER_RANGE[0] * width), int(x0 + GUTTER_RANGE[1] * width)
@@ -168,7 +242,38 @@ def _read_lines(pdf, layout: str, on_progress=None):
                                   "top": line["top"], "bottom": line["bottom"], "colx": (cx0, cx1)})
         if on_progress:
             on_progress(pi + 1, len(pages) * 2)
-    return _drop_running_lines(lines, geometry), geometry
+    return _prefer_english_columns(_drop_running_lines(lines, geometry)), geometry
+
+
+def _prefer_english_columns(lines: list[dict]) -> list[dict]:
+    """Keep only the English column on bilingual pages (Hindi left / English right, or the reverse).
+
+    This app reads English from PDFs; Hindi arrives through JSON. Reading both columns concatenates the same
+    question numbers and merges Hindi + English into one absurd block."""
+    by_page: dict[int, list] = {}
+    for ln in lines:
+        by_page.setdefault(ln["page"], []).append(ln)
+    kept: list[dict] = []
+    for group in by_page.values():
+        cols: dict[int, list] = {}
+        for ln in group:
+            cols.setdefault(ln["col"], []).append(ln)
+        if len(cols) < 2:
+            kept.extend(group)
+            continue
+        hindi_cols, english_cols = [], []
+        for ci, lns in cols.items():
+            en, hi = _script_counts(" ".join(ln["text"] for ln in lns))
+            if hi > en and hi >= 20:
+                hindi_cols.append(ci)
+            elif en > hi and en >= 20:
+                english_cols.append(ci)
+        if hindi_cols and english_cols:
+            keep_cols = set(english_cols)
+            kept.extend(ln for ln in group if ln["col"] in keep_cols)
+        else:
+            kept.extend(group)
+    return kept
 
 
 def _drop_running_lines(lines: list[dict], geometry: list[dict]) -> list[dict]:
@@ -195,7 +300,26 @@ def _drop_running_lines(lines: list[dict], geometry: list[dict]) -> list[dict]:
     def is_content(line):                     # never a header: a question start, an option line or an answer line
         return bool(START.match(line["text"]) or OPTION.search(line["text"]) or ANSWER_MARK.match(line["text"]))
 
-    return [ln for ln in lines if not (in_band(ln) and key(ln) in running and not is_content(ln))]
+    def overlay_text(text: str) -> bool:
+        t = text.lower()
+        return "@" in t or ".com" in t or "www." in t or bool(re.search(r"\d{8,}", text))
+
+    overlay_seen: dict = {}
+    for line in lines:
+        if overlay_text(line["text"]):
+            overlay_seen.setdefault(re.sub(r"\d+", "#", line["text"].lower()), set()).add(line["page"])
+    overlays = {k for k, on in overlay_seen.items() if len(on) >= REPEAT_MIN_PAGES}
+
+    def drop(ln):
+        if is_content(ln):
+            return False
+        if in_band(ln) and key(ln) in running:
+            return True
+        if overlay_text(ln["text"]) and re.sub(r"\d+", "#", ln["text"].lower()) in overlays:
+            return True
+        return False
+
+    return [ln for ln in lines if not drop(ln)]
 
 
 # --------------------------------------------------------------------------- an answer key at the end of the paper
@@ -285,7 +409,19 @@ def cut_questions(lines: list[dict]):
     for ln in lines:
         text = ln["text"]
         m = START.match(text)
-        if m and int(m.group(1)) == expected and (current is None or _has_options(current["body"])):
+        n = int(m.group(1)) if m else None
+        # After (a)–(d) the next numbered stem starts a question even if the printed number is wrong
+        # ("25." when 27 was expected — a bilingual crop or a typesetting slip). Numbers 1–4 after a
+        # finished question are still treated as statements, so match-the-following rows stay inside it.
+        starts_question = (
+            m is not None
+            and (current is None or _has_options(current["body"]))
+            and (
+                n == expected
+                or (current is not None and n > 4)
+            )
+        )
+        if starts_question:
             if expected > MAX_QUESTION_NUMBER:
                 break
             current = {"number": expected, "body": [], "answer": None, "answer_seen": False, "explanation": []}

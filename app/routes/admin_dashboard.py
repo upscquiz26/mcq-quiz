@@ -29,8 +29,9 @@ QUIET_ACTIONS = ("user.login", "user.logout", "performance.view")      # routine
 ACTION_LABELS = {
     "paper.upload": "Uploaded a paper", "paper.import_done": "Finished reading a paper", "paper.import_failed": "A paper failed to import",
     "paper.json_import": "Imported questions from JSON", "paper.publish": "Published a paper", "paper.unpublish": "Unpublished a paper",
-    "paper.archive": "Archived a paper", "paper.unarchive": "Restored a paper", "paper.settings": "Changed a paper's marking scheme",
+    "paper.archive": "Archived a paper", "paper.unarchive": "Restored a paper", "paper.delete": "Deleted a paper", "paper.settings": "Changed a paper's marking scheme",
     "question.edit": "Edited a question", "question.confirm": "Confirmed a question", "question.confirm_bulk": "Confirmed questions in bulk",
+    "question.add": "Added a question", "question.delete": "Deleted a question",
     "question.quarantine": "Quarantined a question", "question.restore": "Restored a question", "question.reopen": "Sent a question back to review",
     "question.reopen_bulk": "Sent a paper back to review", "question.demote": "A live question went back to review",
     "user.approved": "Approved an account", "user.rejected": "Rejected an account", "user.deactivated": "Deactivated an account",

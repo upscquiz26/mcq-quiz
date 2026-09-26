@@ -315,9 +315,76 @@ def test_a_paper_that_is_still_being_read_cannot_be_archived(admin, db, make_pap
     assert db.get(models.Paper, paper.id).archived_at is None
 
 
-def test_there_is_no_delete_route_any_more(admin, make_paper):
-    paper = make_paper("No delete paper", n=1)
-    assert admin.post(f"/papers/{paper.id}/delete").status_code == 404
+def test_an_unused_paper_can_be_deleted(admin, db, make_paper, tmp_path):
+    source = tmp_path / "gone.pdf"
+    source.write_bytes(b"%PDF-1.4 gone")
+    paper = make_paper("Delete me paper", n=2, source_pdf_path=str(source))
+    pid, qids = paper.id, [q.id for q in paper.questions]
+    page = admin.get(f"/review/{pid}")
+    assert "Delete this paper" in page.text and "Add one question by hand" in page.text and "Delete question" in page.text
+    assert admin.post(f"/papers/{pid}/delete").status_code == 303
+    db.rollback()
+    assert db.get(models.Paper, pid) is None
+    assert db.query(models.Question).filter(models.Question.id.in_(qids)).count() == 0
+    assert not source.exists()
+    assert {"paper.delete"} <= set(actions(db))
+
+
+def test_a_paper_with_student_attempts_cannot_be_deleted(admin, db, make_paper, make_user):
+    paper = make_paper("Sat paper", n=1)
+    make_user("sitter")
+    student = db.query(models.User).filter_by(username="sitter").one()
+    db.add(models.Attempt(user_id=student.id, paper_id=paper.id, kind=models.AttemptKind.FULL,
+                          status=models.AttemptStatus.SUBMITTED))
+    db.commit()
+    r = admin.post(f"/papers/{paper.id}/delete")
+    assert r.status_code == 303
+    db.rollback()
+    assert db.get(models.Paper, paper.id) is not None
+    assert db.query(models.Question).filter_by(paper_id=paper.id).count() == 1
+
+
+def test_a_question_can_be_added_to_a_paper_and_an_unused_one_deleted(admin, db, make_paper):
+    paper = make_paper("Editable paper", n=2)
+    r = admin.post(f"/review/{paper.id}/questions/add", data={
+        "question_number": "3", "text": "What is 2 + 2?",
+        "option_a": "3", "option_b": "4", "option_c": "5", "option_d": "6",
+        "correct_answer": "B", "explanation": "Basic arithmetic.",
+    })
+    assert r.status_code == 303
+    db.rollback()
+    q = db.query(models.Question).filter_by(paper_id=paper.id, question_number=3).one()
+    assert (q.text, q.option_b, q.correct_answer, q.status, q.source) == (
+        "What is 2 + 2?", "4", "B", models.QStatus.NEEDS_REVIEW, "manual")
+    assert q.explanation == "Basic arithmetic."
+    assert admin.post(f"/review/{paper.id}/questions/add", data={
+        "question_number": "3", "text": "Duplicate number",
+        "option_a": "a", "option_b": "b", "option_c": "c", "option_d": "d",
+    }).status_code == 303
+    db.rollback()
+    assert db.query(models.Question).filter_by(paper_id=paper.id).count() == 3
+
+    assert admin.post(f"/review/{paper.id}/question/{q.id}/delete").status_code == 303
+    db.rollback()
+    assert db.query(models.Question).filter_by(paper_id=paper.id, question_number=3).first() is None
+    assert db.query(models.Question).filter_by(paper_id=paper.id).count() == 2
+    assert {"question.add", "question.delete"} <= set(actions(db))
+
+
+def test_a_question_with_student_answers_cannot_be_deleted(admin, db, make_paper, make_user):
+    paper = make_paper("Answered paper", n=1)
+    q = db.query(models.Question).filter_by(paper_id=paper.id).one()
+    make_user("answerer")
+    student = db.query(models.User).filter_by(username="answerer").one()
+    attempt = models.Attempt(user_id=student.id, kind=models.AttemptKind.TOPIC, status=models.AttemptStatus.SUBMITTED)
+    db.add(attempt)
+    db.flush()
+    db.add(models.Response(attempt_id=attempt.id, question_id=q.id, position=1, selected_answer="A"))
+    db.commit()
+    r = admin.post(f"/review/{paper.id}/question/{q.id}/delete")
+    assert r.status_code == 303
+    db.rollback()
+    assert db.get(models.Question, q.id) is not None
 
 
 # --------------------------------------------------------------------------- backups

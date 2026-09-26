@@ -56,6 +56,10 @@
               <button type="submit" class="secondary">Review again ({{ confirmed }})</button>
             </form>
           {% endif %}
+          <form method="post" action="/papers/{{ p.id }}/delete" class="inline-form"
+                onsubmit="return confirm('Permanently delete “{{ p.title }}”? If students have already sat it, this will be refused.');">
+            <button type="submit" class="danger">Delete</button>
+          </form>
         </div>
       {% endif %}
     </li>
@@ -88,6 +92,10 @@
                 archived {{ p.archived_at.strftime("%d %b %Y") }}
                 <form method="post" action="/papers/{{ p.id }}/unarchive" style="display:inline">
                   <button type="submit" class="link-button">Restore</button>
+                </form>
+                <form method="post" action="/papers/{{ p.id }}/delete" style="display:inline"
+                      onsubmit="return confirm('Permanently delete “{{ p.title }}”?');">
+                  <button type="submit" class="link-button">Delete</button>
                 </form>
               </div>
             </li>

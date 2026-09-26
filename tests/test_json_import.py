@@ -50,9 +50,9 @@ SPEC_RULES = [
     "Convert the attached question paper into JSON exactly in the format below.",
     "- Copy question and option text exactly as written. Do not rephrase, fix, or improve.",
     "- Extract BOTH languages when the document has both. Put English in question and\n  options. Put Hindi in question_hi and options_hi, in Devanagari (Unicode).",
-    "- Never translate. Never transliterate. If a question exists in only one\n  language in the document, leave the other language's fields null. Do not create\n  a Hindi or English version yourself.",
+    "- Never translate. Never transliterate. Never invent Hindi or English. If a\n  question exists in only one language in the document, leave the other\n  language's fields null. Do not create a Hindi or English version yourself.",
     "- Do not correct Hindi spelling, matras or grammar. Copy it as printed.",
-    "- Never guess an answer. Use correct_answer only if the answer key or the\n  document itself states it. Otherwise set it to null.",
+    "- Never guess an answer. Never guess correct_answer. Use it only if the answer\n  key or the document itself states it. Otherwise set it to null.",
     "- Same for explanation and explanation_hi: copy if present, else null.\n  Do not write your own.",
     "- Keep statement lists inside the question text, one per line, using \\n.",
     "- Each language given for a question has exactly 4 options with keys a, b, c, d.\n  If Hindi options are labelled क, ख, ग, घ, map them in order to a, b, c, d.",
@@ -61,7 +61,10 @@ SPEC_RULES = [
     "- subject must be one of: Polity, History, Geography, Economy, Environment,\n  Science & Tech, Current Affairs, CSAT, Other. Use null if unsure.",
     "- page = the PDF page number where the question starts.",
     "- Output ONLY valid JSON. No commentary, no markdown.",
-    "- Do 25 questions per reply, then stop and wait for me to say \"next\".",
+    "- schema_version must be 2.",
+    "- You may paste several replies together; each reply must be its own JSON object.",
+    "- Hindi options labelled क–घ must be emitted as keys a–d (the app will also accept क–घ).",
+    "- Prefer 25 questions per object, then stop and wait for me to say \"next\".",
     "- At the end of each reply, add one line outside the JSON:\n  \"Covered questions X to Y.\"",
 ]
 
@@ -98,6 +101,8 @@ def test_invalid_json_says_where_it_broke_and_which_question():
     assert len(r.errors) == 1 and "Invalid JSON" in errors(r)[0]
     assert "line 3" in errors(r)[0] and "near question 2" in errors(r)[0]
     assert r.errors[0].part == "part1.json" and r.errors[0].number == 2 and not r.ok
+    assert 1 in r.questions and 2 not in r.questions
+    assert "Kept 1 complete question" in errors(r)[0]
 
 
 def test_text_with_no_json_is_an_error_and_a_markdown_fence_is_tolerated():
@@ -152,7 +157,7 @@ def test_bytes_that_are_not_utf8_or_too_large_are_refused():
     ({"options": {"a": "1", "b": "2", "c": "", "d": "4"}}, "Option c is empty"),
     ({"options": {"a": "1", "b": None, "c": "3", "d": "4"}}, "Option b is empty"),
     ({"correct_answer": "e"}, "\"correct_answer\" must be a, b, c, d or null"),
-    ({"correct_answer": "3"}, "\"correct_answer\" must be a, b, c, d or null"),
+    ({"correct_answer": "3"}, "not 1–4"),
     ({"correct_answer": "ab"}, "\"correct_answer\" must be a, b, c, d or null"),
     ({"correct_answer": 2}, "\"correct_answer\" must be a, b, c, d or null"),
     ({"explanation": 12}, "\"explanation\" must be text or null"),
@@ -368,7 +373,7 @@ def test_only_admins_can_reach_any_of_the_json_pages(make_user, anon):
 
 
 def test_the_form_offers_the_prompt_the_template_and_existing_papers(admin, db, make_paper):
-    make_paper("Existing paper for JSON form", n=2)
+    paper = make_paper("Existing paper for JSON form", n=2)
     page = admin.get("/admin/import/json").text
     assert "Copy prompt" in page and "Convert the attached question paper into JSON" in page
     assert "/admin/import/json/template" in page and "Add to: Existing paper for JSON form" in page and 'name="files"' in page
@@ -377,6 +382,13 @@ def test_the_form_offers_the_prompt_the_template_and_existing_papers(admin, db, 
     assert "attachment" in template.headers["content-disposition"]
     prompt = admin.get("/admin/import/json/prompt")
     assert prompt.headers["content-type"].startswith("text/plain") and prompt.text == ji.prompt_text()
+    preselected = admin.get(f"/admin/import/json?paper_id={paper.id}").text
+    assert f'value="{paper.id}" selected' in preselected
+    assert "add more questions to" in preselected
+    review = admin.get(f"/review/{paper.id}").text
+    assert 'href="#add-json"' in review and "Add from JSON" in review and "Add question" in review
+    assert 'id="add-json"' in review and f'name="target" value="{paper.id}"' in review
+    assert f"/admin/import/json?paper_id={paper.id}" in review
 
 
 def test_validating_saves_nothing_and_shows_the_report(admin, db):
@@ -541,7 +553,8 @@ def test_a_paper_for_the_same_test_is_refused_unless_asked(admin, db):
 def test_multiple_parts_with_a_conflict_import_only_when_the_later_part_wins(admin, db):
     a, b = doc([q(1, correct_answer="a"), q(2)]), doc([q(1, correct_answer="d"), q(3)])
     blocked = validate(admin, ("p1.json", a), ("p2.json", b))
-    assert "1 error" in blocked.text and 'action="/admin/import/json/apply"' not in blocked.text
+    assert "1 error" in blocked.text and "Import the 2 valid" in blocked.text
+    assert apply(admin, token_of(blocked), title=f"Conflict blocked {next(_run)}").status_code == 400
     token = token_of(validate(admin, ("p1.json", a), ("p2.json", b), later_wins=True))
     title = f"Later wins paper {next(_run)}"
     assert apply(admin, token, title=title, later_wins="true").status_code == 303
@@ -596,7 +609,7 @@ def test_adding_to_an_existing_paper_skips_numbers_it_already_has(admin, db):
     paper = existing_paper_with(db, admin)
     original = {n: x.text for n, x in questions_by_number(db, paper).items()}
     r = validate(admin, ("more.json", doc([q(2, question="A replacement for two that must be ignored here?"), q(4), q(5)])), target=str(paper.id))
-    assert "already exist in" in r.text and "will be skipped" in r.text and "Adding to" in r.text
+    assert "already exist in" in r.text and "Fill blanks only" in r.text and paper.title in r.text
     done = apply(admin, token_of(r))
     assert done.status_code == 303 and done.headers["location"] == f"/review/{paper.id}"
     qs = questions_by_number(db, paper)
@@ -636,6 +649,52 @@ def test_an_archived_paper_cannot_be_added_to(admin, db):
     paper = existing_paper_with(db, admin)
     admin.post(f"/papers/{paper.id}/archive")
     assert admin.post("/admin/import/json/validate", data={"target": str(paper.id), "pasted": doc([q(9)])}).status_code == 404
+    assert 'id="add-json"' not in admin.get(f"/review/{paper.id}").text
+
+
+def test_review_checks_json_before_adding_more_questions(admin, db, make_paper):
+    paper = make_paper("Review JSON add paper", n=2)
+    page = admin.get(f"/review/{paper.id}").text
+    assert "Add from JSON" in page and "Add more questions from JSON" in page and "Check JSON" in page
+    assert f'name="target" value="{paper.id}"' in page
+    r = admin.post("/admin/import/json/validate", data={"target": str(paper.id), "pasted": doc([q(3)])})
+    assert r.status_code == 200 and "Review this paper" in r.text and "No errors" in r.text
+    assert apply(admin, token_of(r)).status_code == 303
+    qs = questions_by_number(db, paper)
+    assert sorted(qs) == [1, 2, 3]
+    assert qs[3].source == "ai_json" and qs[3].status == models.QStatus.NEEDS_REVIEW
+
+
+def test_a_second_json_batch_that_reuses_1_to_n_can_be_appended(admin, db):
+    paper = existing_paper_with(db, admin, count=3)
+    original = questions_by_number(db, paper)[1].text
+    r = validate(admin, ("next.json", doc([q(1, question="Second-batch question one that is new content here?"),
+                                           q(2, question="Second-batch question two that is new content here?"),
+                                           q(3, question="Second-batch question three that is new content here?")])),
+                 target=str(paper.id))
+    assert "already on this paper" in r.text and "Q4–Q6" in r.text and 'name="append_new"' in r.text
+    skipped = apply(admin, token_of(r))
+    assert skipped.status_code == 303
+    assert sorted(questions_by_number(db, paper)) == [1, 2, 3] and questions_by_number(db, paper)[1].text == original
+    r = validate(admin, ("next.json", doc([q(1, question="Second-batch question one that is new content here?"),
+                                           q(2, question="Second-batch question two that is new content here?"),
+                                           q(3, question="Second-batch question three that is new content here?")])),
+                 target=str(paper.id))
+    assert apply(admin, token_of(r), append_new="true").status_code == 303
+    qs = questions_by_number(db, paper)
+    assert sorted(qs) == [1, 2, 3, 4, 5, 6]
+    assert qs[1].text == original and qs[4].text.startswith("Second-batch question one")
+    assert qs[4].source == "ai_json" and qs[4].status == models.QStatus.NEEDS_REVIEW
+    detail = json.loads(db.query(models.AuditLog).filter_by(action="paper.json_import", paper_id=paper.id)
+                        .order_by(models.AuditLog.id.desc()).first().detail_json)
+    assert detail["mode"] == "append" and detail["created"] == 3
+
+
+def test_renumber_to_append_keeps_order():
+    r = report(doc([q(2), q(5), q(1)]))
+    mapping = r.renumber_to_append(10)
+    assert mapping == {1: 10, 2: 11, 5: 12} and list(r.questions) == [10, 11, 12]
+
 
 
 # =========================================================================== the optional PDF
@@ -703,3 +762,78 @@ def test_the_pages_accept_any_number_of_parts(admin):
     assert r.status_code == 200 and "30 questions can be imported" in r.text and "No errors." in r.text
     assert "At most" not in r.text and "Limits:" not in r.text
     assert "There is no limit on the number of parts" in admin.get("/admin/import/json").text
+
+
+def test_concatenated_json_objects_in_one_paste_are_all_read():
+    r = report(doc([q(1)]) + '\n"Covered questions 1 to 1."\n' + doc([q(2)]))
+    assert r.ok and set(r.questions) == {1, 2}
+
+
+def test_several_fenced_blobs_in_one_part_are_all_read():
+    blob = "```json\n" + doc([q(1)]) + "\n```\n```json\n" + doc([q(2)]) + "\n```"
+    r = report(blob)
+    assert r.ok and set(r.questions) == {1, 2}
+
+
+def test_devanagari_option_keys_and_answers_map_to_a_d():
+    item = q(1, options={"क": "first choice here", "ख": "second choice here",
+                         "ग": "third choice here", "घ": "fourth choice here"},
+             correct_answer="ग")
+    r = report(json.dumps({"schema_version": 2, "questions": [item]}))
+    assert r.ok and r.questions[1]["options"]["c"] == "third choice here" and r.questions[1]["answer"] == "C"
+    assert any("क–घ" in w for w in warnings(r))
+    assert report(doc([q(1, correct_answer="(ख)")])).questions[1]["answer"] == "B"
+
+
+def test_drop_invalid_clears_numbered_errors_so_the_rest_can_import():
+    r = report(doc([q(1), q(2, correct_answer="z"), q(3)]))
+    assert not r.ok and sorted(r.questions) == [1, 3] and r.importable_despite_errors
+    r.drop_invalid_questions()
+    assert r.ok and sorted(r.questions) == [1, 3]
+
+
+def test_valid_questions_can_be_imported_when_siblings_are_invalid(admin, db):
+    r = validate(admin, ("mix.json", doc([q(1), q(2, correct_answer="z"), q(3)])))
+    assert "Q2" in r.text and "Import the 2 valid" in r.text and 'name="skip_invalid"' in r.text
+    assert 'action="/admin/import/json/apply"' in r.text
+    token = token_of(r)
+    blocked = apply(admin, token, title=f"Should not import {next(_run)}")
+    assert blocked.status_code == 400
+    title = f"Skip invalid {next(_run)}"
+    done = apply(admin, token, title=title, skip_invalid="true")
+    assert done.status_code == 303
+    assert sorted(questions_by_number(db, paper_by_title(db, title))) == [1, 3]
+
+
+def test_fill_blanks_adds_hindi_and_answer_without_changing_english(admin, db, make_paper):
+    paper = make_paper("Fill target paper", n=1)
+    row = questions_by_number(db, paper)[1]
+    row.status = models.QStatus.LIVE
+    row.correct_answer = None
+    row.text = "English from the PDF must stay exactly as it is?"
+    db.commit()
+    payload = doc([q(1, question="This English from the JSON must be ignored entirely, yes?",
+                     question_hi="यह हिंदी प्रश्न का पूरा पाठ यहाँ लिखा गया है?",
+                     options_hi={"a": "केवल एक", "b": "केवल दो", "c": "दोनों", "d": "कोई नहीं"},
+                     correct_answer="c", explanation="JSON explanation should fill.")])
+    r = validate(admin, ("hi.json", payload), target=str(paper.id))
+    assert apply(admin, token_of(r), fill_blanks="true").status_code == 303
+    row = questions_by_number(db, paper)[1]
+    assert row.text == "English from the PDF must stay exactly as it is?"
+    assert row.question_hi.startswith("यह हिंदी") and row.option_a_hi == "केवल एक"
+    assert row.correct_answer == "C" and row.answer_source == "json"
+    assert row.status == models.QStatus.NEEDS_REVIEW and row.source == "pdf_ocr"
+    assert "ai_answer" in (row.ocr_flags or "")
+    detail = json.loads(db.query(models.AuditLog).filter_by(action="paper.json_import", paper_id=paper.id)
+                        .order_by(models.AuditLog.id.desc()).first().detail_json)
+    assert detail["mode"] == "fill" and detail["filled"] == 1
+
+
+def test_review_can_filter_to_ai_supplied_answers(admin, db):
+    title = f"AI answer filter {next(_run)}"
+    assert apply(admin, token_of(validate(admin, ("a.json", doc([q(1), q(2, correct_answer=None)])))), title=title).status_code == 303
+    paper = paper_by_title(db, title)
+    listing = admin.get(f"/review/{paper.id}").text
+    assert "AI answers (1)" in listing and 'show=ai_answers' in listing
+    page = admin.get(f"/review/{paper.id}?show=ai_answers").text
+    assert 'id="q1"' in page and 'id="q2"' not in page

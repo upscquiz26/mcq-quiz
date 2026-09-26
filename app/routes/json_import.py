@@ -108,12 +108,14 @@ def _report_for(db: Session, token: str, paper: models.Paper | None, later_wins:
 
 # --------------------------------------------------------------------------- pages
 
-def _form_page(request: Request, db: Session, error: str | None = None, status_code: int = 200):
+def _form_page(request: Request, db: Session, error: str | None = None, status_code: int = 200,
+               selected_id: int | None = None):
     papers = db.query(models.Paper).filter(models.Paper.archived_at.is_(None), models.Paper.status == "ready") \
         .order_by(models.Paper.created_at.desc()).all()
+    selected = next((p for p in papers if p.id == selected_id), None) if selected_id else None
     return templates.TemplateResponse(
         "json_import.html",
-        {"request": request, "error": error, "papers": papers,
+        {"request": request, "error": error, "papers": papers, "selected": selected,
          "prompt": json_import.prompt_text(_subject_names(db)), "template": json_import.TEMPLATE_TEXT,
          "flash": request.session.pop("flash", None)},
         status_code=status_code,
@@ -121,8 +123,8 @@ def _form_page(request: Request, db: Session, error: str | None = None, status_c
 
 
 @router.get("/admin/import/json")
-def json_import_form(request: Request, db: Session = Depends(get_db)):
-    return _form_page(request, db)
+def json_import_form(request: Request, paper_id: int | None = None, db: Session = Depends(get_db)):
+    return _form_page(request, db, selected_id=paper_id)
 
 
 @router.get("/admin/import/json/template")
@@ -148,13 +150,33 @@ def _report_page(request: Request, db: Session, token: str, paper: models.Paper 
     }
     defaults.update(form or {})
     rows = list(report.questions.values())
+    error_groups, loose_errors = [], []
+    by_number: dict[int, list] = {}
+    for issue in report.errors:
+        if issue.number is None:
+            loose_errors.append(issue)
+        else:
+            by_number.setdefault(issue.number, []).append(issue)
+    error_groups = [{"number": n, "issues": items} for n, items in sorted(by_number.items())]
+    invalid_numbers = {i.number for i in report.errors if i.number is not None}
+    valid_count = sum(1 for n in report.questions if n not in invalid_numbers)
+    next_number = 1
+    if paper:
+        nums = [q.question_number for q in paper.questions if q.question_number]
+        next_number = (max(nums) + 1) if nums else 1
+    all_existing = bool(paper and report.questions and report.existing and len(report.existing) == len(report.questions))
+    append_last = next_number + valid_count - 1 if valid_count else next_number
     return templates.TemplateResponse(
         "json_report.html",
         {"request": request, "token": token, "paper": paper, "report": report, "later_wins": later_wins, "form": defaults,
          "meta": meta, "rows": rows, "hidden_rows": 0, "error": error,
          "presets": PRESETS, "source_types": models.SourceType.LABELS, "subjects": _subject_names(db),
          "flags": ingest.FLAG_LABELS, "flags_for": json_import.flags_for,
-         "counts": _counts(report), "flash": request.session.pop("flash", None)},
+         "counts": _counts(report), "flash": request.session.pop("flash", None),
+         "error_groups": error_groups, "loose_errors": loose_errors,
+         "importable": report.ok or report.importable_despite_errors,
+         "preview_open": 0 < len(rows) <= 30, "valid_count": valid_count,
+         "next_number": next_number, "append_last": append_last, "all_existing": all_existing},
         status_code=status_code,
     )
 
@@ -225,6 +247,9 @@ def apply_import(
     token: str = Form(...),
     later_wins: bool = Form(False),
     overwrite_needs_review: bool = Form(False),
+    fill_blanks: bool = Form(False),
+    append_new: bool = Form(False),
+    skip_invalid: bool = Form(False),
     allow_duplicate: bool = Form(False),
     skip_duplicates: bool = Form(False),
     title: str = Form(""), source_type: str = Form(""), source_name: str = Form(""), test_name: str = Form(""),
@@ -249,8 +274,13 @@ def apply_import(
         return refuse(str(e))
     total = scheme["expected_total"] if scheme else None
     report = _report_for(db, token, paper, later_wins, expected_total=total)
+    skipped_invalid = 0
+    if skip_invalid:
+        skipped_invalid = len({i.number for i in report.errors if i.number is not None})
+        report.drop_invalid_questions()
     if not report.ok:
-        return refuse("The import can't go ahead until the errors below are fixed (edit the JSON and validate again).", report)
+        return refuse("The import can't go ahead until the errors below are fixed (edit the JSON and validate again), "
+                      "or import only the valid questions.", report)
 
     digest = "json:" + hashlib.sha256("".join(meta["sha256"]).encode()).hexdigest()
     exam_kind = None
@@ -282,6 +312,11 @@ def apply_import(
         if not report.questions:
             return refuse("Every question in this JSON is a duplicate of one already imported, so there is nothing left to import.", report)
 
+    if paper is not None and append_new and report.questions:
+        nums = [q.question_number for q in paper.questions if q.question_number]
+        start = (max(nums) + 1) if nums else 1
+        report.renumber_to_append(start)
+
     backup_name = backup.create_backup("auto")
     pdf_path = pdf_hash = None
     if meta.get("pdf_name"):
@@ -309,7 +344,22 @@ def apply_import(
         if pdf_path and not paper.source_pdf_path:
             paper.source_pdf_path = pdf_path
 
-    counts = json_import.save_questions(db, request.state.user, report, paper, overwrite_needs_review=overwrite_needs_review)
+    fill = bool(fill_blanks and not created_paper and not append_new)
+    overwrite = bool(overwrite_needs_review and not append_new)
+    counts = json_import.save_questions(
+        db, request.state.user, report, paper,
+        overwrite_needs_review=overwrite, fill_blanks=fill,
+    )
+    if created_paper:
+        mode = "create"
+    elif append_new:
+        mode = "append"
+    elif overwrite:
+        mode = "replace"
+    elif fill:
+        mode = "fill"
+    else:
+        mode = "create"
     pictures, picture_problem = 0, None
     if pdf_path:
         pictures, picture_problem = json_import.render_pages(
@@ -318,7 +368,8 @@ def apply_import(
         "title": paper.title, "new_paper": created_paper, "parts": [{"name": n, "sha256": h[:16]} for n, h in zip(meta["names"], meta["sha256"])],
         "pdf": {"name": meta.get("pdf_name"), "sha256": (pdf_hash or "")[:16], "page_pictures": pictures},
         **counts, "warnings": len(report.warnings), "backup": backup_name, "later_wins": later_wins,
-        "overwrite_needs_review": overwrite_needs_review, "skipped_duplicates": skipped_duplicates,
+        "overwrite_needs_review": overwrite, "skipped_duplicates": skipped_duplicates,
+        "skipped_invalid": skipped_invalid, "mode": mode, "fill_blanks": fill, "append_new": bool(append_new and not created_paper),
     })
     db.commit()
     shutil.rmtree(_dir(token), ignore_errors=True)
@@ -327,10 +378,14 @@ def apply_import(
                "each one needs your review before students can see it.")
     if counts["overwritten"]:
         message += f" {counts['overwritten']} waiting question{'s were' if counts['overwritten'] != 1 else ' was'} replaced."
+    if counts.get("filled"):
+        message += f" {counts['filled']} existing question{'s were' if counts['filled'] != 1 else ' was'} filled in (blanks only)."
     if counts["skipped_existing"]:
         message += f" {counts['skipped_existing']} number{'s were' if counts['skipped_existing'] != 1 else ' was'} already in the paper and skipped."
     if skipped_duplicates:
         message += f" {skipped_duplicates} duplicate{'s were' if skipped_duplicates != 1 else ' was'} skipped."
+    if skipped_invalid:
+        message += f" {skipped_invalid} invalid number{'s were' if skipped_invalid != 1 else ' was'} skipped."
     found_dups = counts.get("duplicates", {"exact": 0, "near": 0})
     if found_dups["exact"] + found_dups["near"]:
         message += (f" {found_dups['exact'] + found_dups['near']} possible duplicate"

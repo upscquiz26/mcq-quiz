@@ -125,6 +125,29 @@ def test_the_watermark_headers_and_footers_do_not_leak_into_the_text(pdf_path):
     assert all(not q["option_d"].endswith(("Page 2", "Page 3")) for q in questions)
 
 
+def test_a_small_grey_overlay_is_dropped_and_not_read_as_text(pdf_path):
+    lines = sum((question_lines(n, None) for n in range(1, 4)), [])
+    items, _ = flow(lines, 60, 60)
+    overlay = [(40 + 80 * i, 180 + 90 * i, 6, "overlaywatermark@mail.com", 0.22) for i in range(6)]
+    (questions, warnings), _ = read(pdf_path, make_pdf([items + overlay]))
+    blob = " ".join(q["text"] + q["option_a"] + q["option_b"] + q["option_c"] + q["option_d"] for q in questions)
+    assert warnings == []
+    assert [q["question_number"] for q in questions] == [1, 2, 3]
+    assert "overlaywatermark" not in blob and "mail.com" not in blob
+
+
+def test_script_gutter_splits_hindi_left_from_english_right():
+    words = ([{"text": "\u0915\u0925\u0928", "x0": 40, "x1": 80}] * 16
+             + [{"text": "Which", "x0": 320, "x1": 380}] * 16)
+    g = te.script_gutter_from_words(words, 595)
+    assert g is not None and 80 < g < 320
+
+
+def test_script_gutter_is_none_on_an_english_only_page():
+    words = [{"text": "Consider", "x0": 50 + (i % 3) * 80, "x1": 120 + (i % 3) * 80} for i in range(30)]
+    assert te.script_gutter_from_words(words, 595) is None
+
+
 def test_a_question_that_continues_in_the_next_column_is_joined(pdf_path):
     (questions, _), _ = read(pdf_path, paper_pdf(20))
     split = [q for q in questions if q["page_number"] and "item" in q["text"]]
@@ -240,6 +263,21 @@ def test_a_question_whose_options_were_lost_swallows_the_next_and_is_reported(pd
     assert [q["question_number"] for q in questions] == [1]                   # nothing after it could start a question
     assert "maybe_merged" in questions[0]["flags"]
     assert any("look like two questions merged" in w and "1" in w for w in warnings)
+
+
+def test_a_misprinted_number_after_options_still_starts_the_next_question(pdf_path):
+    """Coaching PDFs sometimes reprint the wrong number (25. instead of 27.) once the previous options end."""
+    lines = question_lines(1, None) + [
+        "25. Consider the following pairs:",
+        "(a) one pair (b) two pairs",
+        "(c) three pairs (d) all four pairs",
+    ]
+    items, _ = flow(lines, 60, 60)
+    (questions, warnings), _ = read(pdf_path, make_pdf([items]))
+    assert [q["question_number"] for q in questions] == [1, 2]
+    assert questions[1]["text"].startswith("Consider the following pairs:")
+    assert questions[1]["option_a"] == "one pair"
+    assert warnings == []
 
 
 def test_a_question_with_fewer_than_four_options_is_flagged(pdf_path):
@@ -407,3 +445,21 @@ def test_read_questions_picks_the_method(pdf_path):
     from app import ingest
     text_questions, _, method = ingest.read_questions(pdf_path(paper_pdf(8)), os.path.join(os.environ["UPSC_DATA_DIR"], "m1"))
     assert method == "text" and len(text_questions) == 8
+
+
+def test_a_bilingual_coaching_pdf_keeps_english_and_drops_the_hindi_column(tmp_path):
+    """The RTM-style paper that was uploaded locally: Hindi left, English right, grey email overlays.
+    Without the bilingual split the reader found 4 merged questions instead of 75."""
+    from glob import glob
+    from app.database import BASE_DIR
+    matches = glob(os.path.join(BASE_DIR, "data", "pdfs", "*questions*.pdf"))
+    if not matches:
+        pytest.skip("no uploaded question PDF in data/pdfs")
+    path = max(matches, key=os.path.getmtime)
+    questions, warnings = te.extract_questions(path, str(tmp_path / "images"))
+    assert len(questions) >= 50, (len(questions), warnings[:3])
+    q1 = next(q for q in questions if q["question_number"] == 1)
+    assert "hindi_text" not in q1["flags"]
+    assert "maybe_merged" not in q1["flags"]
+    assert not te.DEVANAGARI.search(q1["text"] + q1["option_a"])
+    assert "Which" in q1["text"] or "which" in q1["text"] or q1["option_a"]

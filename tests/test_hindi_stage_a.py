@@ -136,9 +136,8 @@ def test_a_question_without_a_complete_option_set_in_any_language_is_refused():
     ({"options_hi": ["क", "ख", "ग", "घ"]}, "\"options_hi\" must be an object with the keys a, b, c and d"),
     ({"options_hi": {"a": "केवल 1", "b": "केवल 2", "c": "1 और 2 दोनों"}}, "Missing Hindi option d"),
     ({"options_hi": {**HI_OPTIONS, "e": "पाँच"}}, "Unexpected Hindi option key e"),
-    ({"options_hi": {"क": "केवल 1", "ख": "केवल 2", "ग": "दोनों", "घ": "कोई नहीं"}}, "Unexpected Hindi option keys"),
     ({"options_hi": {**HI_OPTIONS, "b": ""}}, "Hindi option b is empty"),
-    ({"options_hi": {"a": "केवल 1", "A": "फिर", "b": "x", "c": "y", "d": "z"}}, "differ only by case"),
+    ({"options_hi": {"a": "केवल 1", "A": "फिर", "b": "x", "c": "y", "d": "z"}}, "both mean option a"),
     ({"explanation_hi": 5}, "\"explanation_hi\" must be text or null"),
     ({"question_hi": 5}, "\"question_hi\" must be text or null"),
 ])

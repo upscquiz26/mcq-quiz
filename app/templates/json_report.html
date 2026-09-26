@@ -1,23 +1,40 @@
 {% extends "base.html" %}
 {% block title %}JSON import report{% endblock %}
 {% block content %}
-  <p class="paper-meta"><a href="/admin/import/json">← Start again</a></p>
-  <h1>Validation report</h1>
   <p class="paper-meta">
-    {% if paper %}Adding to “{{ paper.title }}”{% else %}A new paper{% endif %} ·
-    {% for p in report.parts %}{{ p.name }} ({{ p.questions }}){{ ", " if not loop.last }}{% endfor %}
-    {% if meta.pdf_name %}· with {{ meta.pdf_name }}{% endif %}
+    {% if paper %}<a href="/review/{{ paper.id }}">← Review this paper</a> ·
+    <a href="/admin/import/json?paper_id={{ paper.id }}">Add more JSON</a>
+    {% else %}<a href="/admin/import/json">← Start again</a>{% endif %}
   </p>
+  <div class="page-head">
+    <div>
+      <h1>Validation report</h1>
+      <p class="page-sub">
+        Import into {% if paper %}“{{ paper.title }}”{% else %}a new paper{% endif %}
+        · {% for p in report.parts %}{{ p.name }} ({{ p.questions }}){{ ", " if not loop.last }}{% endfor %}
+        {% if meta.pdf_name %}· {{ meta.pdf_name }}{% endif %}
+      </p>
+    </div>
+  </div>
 
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
 
   {% if report.errors %}
     <div class="error">
-      <strong>{{ report.errors|length }} error{{ "s" if report.errors|length != 1 else "" }} — the import can't go ahead.</strong>
+      <strong>{{ report.errors|length }} error{{ "s" if report.errors|length != 1 else "" }}{% if not importable %} — the import can't go ahead.{% endif %}</strong>
       Fix the JSON (or ask the other AI to redo those questions) and validate again.
+      {% if importable %}{{ valid_count }} valid question{{ "s" if valid_count != 1 else "" }} can still be imported.{% endif %}
     </div>
     <ul class="warnings">
-      {% for i in report.errors %}<li>{% if i.where() %}<strong>{{ i.where() }}</strong> — {% endif %}{{ i.message }}</li>{% endfor %}
+      {% for g in error_groups %}
+        <li>
+          <strong>Q{{ g.number }}</strong>
+          <ul>{% for i in g.issues %}<li>{{ i.message }}{% if i.part %} ({{ i.part }}){% endif %}</li>{% endfor %}</ul>
+        </li>
+      {% endfor %}
+      {% for i in loose_errors %}
+        <li>{% if i.where() %}<strong>{{ i.where() }}</strong> — {% endif %}{{ i.message }}</li>
+      {% endfor %}
     </ul>
   {% elif not report.questions %}
     <div class="error">Nothing to import.</div>
@@ -58,19 +75,26 @@
     <p class="paper-meta">The AI reported: {% for name, a, b in report.covered %}{{ name }} covered {{ a }}–{{ b }}{{ "; " if not loop.last }}{% endfor %}.</p>
   {% endif %}
   {% if paper and report.existing %}
-    <p class="notice">{{ report.existing|length }} of these numbers already exist in “{{ paper.title }}” and will be skipped
-      (unless you choose to replace the ones still waiting for review).</p>
+    {% if all_existing %}
+      <p class="notice"><strong>These numbers are already on this paper</strong> (a second AI reply often starts at 1 again).
+        If this is another batch of questions, import them as <strong>Q{{ next_number }}–Q{{ append_last }}</strong> — otherwise they are skipped and you still have {{ report.existing|length }}.</p>
+    {% else %}
+      <p class="notice">{{ report.existing|length }} of these numbers already exist in “{{ paper.title }}”.
+        By default, fill blanks only (Hindi, missing answers, missing explanations) — English from the PDF is not overwritten.
+        Replace still-waiting questions only if you tick that box. To keep the existing ones and add this JSON as extra questions, tick “Add as new questions”.</p>
+    {% endif %}
   {% endif %}
 
   {% if rows %}
-    <details class="tool-box">
+    <details class="tool-box"{% if preview_open %} open{% endif %}>
       <summary>Preview the questions</summary>
       <div class="table-wrap">
         <table class="user-table">
-          <tr><th>No.</th><th>Language</th><th>Question</th><th>Answer</th><th>Subject</th><th>Flags</th></tr>
+          <tr><th>No.</th>{% if all_existing %}<th>Will be saved as</th>{% endif %}<th>Language</th><th>Question</th><th>Answer</th><th>Subject</th><th>Flags</th></tr>
           {% for q in rows %}
             <tr>
               <td>{{ q.number }}</td>
+              {% if all_existing %}<td>Q{{ next_number + loop.index0 }}</td>{% endif %}
               <td>{% if q.text and (q.text_hi or q.options_hi) %}English + Hindi{% elif q.text %}English{% else %}Hindi{% endif %}</td>
               <td>{{ (q.text or q.text_hi)|truncate(110) }}</td><td>{{ q.answer or "—" }}</td><td>{{ q.subject or "—" }}</td>
               <td>{% for f in flags_for(q) %}{{ f }}{{ ", " if not loop.last }}{% endfor %}</td>
@@ -82,11 +106,18 @@
     </details>
   {% endif %}
 
-  {% if report.ok %}
+  {% if importable or report.ok %}
     <h2>Import</h2>
     <form method="post" action="/admin/import/json/apply">
       <input type="hidden" name="token" value="{{ token }}">
       {% if later_wins %}<input type="hidden" name="later_wins" value="true">{% endif %}
+
+      {% if report.errors %}
+        <label class="check-line">
+          <input type="checkbox" name="skip_invalid" value="true" checked>
+          Import the {{ valid_count }} valid question{{ "s" if valid_count != 1 else "" }} (skip numbers that had errors)
+        </label>
+      {% endif %}
 
       {% if report.duplicates %}
         <label class="check-line">
@@ -96,6 +127,16 @@
       {% endif %}
 
       {% if paper %}
+        {% if report.existing %}
+        <label class="check-line">
+          <input type="checkbox" name="append_new" value="true" {% if all_existing %}checked{% endif %}>
+          Add as new questions Q{{ next_number }}–Q{{ append_last }} (the JSON reused numbers this paper already has)
+        </label>
+        {% endif %}
+        <label class="check-line">
+          <input type="checkbox" name="fill_blanks" value="true" {% if not all_existing %}checked{% endif %}>
+          Fill blanks only — write Hindi / missing answers / missing explanations where those fields are empty; do not change English text
+        </label>
         <label class="check-line">
           <input type="checkbox" name="overwrite_needs_review" value="true">
           Replace questions in “{{ paper.title }}” that have the same number and are still waiting for review (their old text is kept in their history)

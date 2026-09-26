@@ -11,21 +11,26 @@ def _esc(text: str) -> str:
     return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
 
-def make_pdf(pages: list[list[tuple[float, float, float, str]]]) -> bytes:
+def make_pdf(pages: list[list[tuple]]) -> bytes:
     objects: list[bytes] = []                        # objects[i] is PDF object number i + 1
 
     def add(body: str | bytes) -> int:
         objects.append(body.encode("latin-1") if isinstance(body, str) else body)
         return len(objects)
 
+    def ops(item: tuple) -> str:
+        x, y, size, text, *rest = item
+        chunk = f"BT /F1 {size} Tf {x} {PAGE_H - y} Td ({_esc(text)}) Tj ET"
+        if rest:
+            chunk = f"{float(rest[0]):.3f} g\n{chunk}\n0 g"
+        return chunk
+
     catalog = add("")                                # filled in below, once the page tree exists
     tree = add("")
     font = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
     kids = []
     for items in pages:
-        stream = "\n".join(
-            f"BT /F1 {size} Tf {x} {PAGE_H - y} Td ({_esc(text)}) Tj ET" for x, y, size, text in items
-        ).encode("latin-1")
+        stream = "\n".join(ops(item) for item in items).encode("latin-1")
         content = add(b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream")
         kids.append(add(
             f"<< /Type /Page /Parent {tree} 0 R /MediaBox [0 0 {PAGE_W} {PAGE_H}] "

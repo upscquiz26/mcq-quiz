@@ -479,3 +479,40 @@ def unarchive_paper(request: Request, paper_id: int, db: Session = Depends(get_d
         db.commit()
     flash(request, f"“{paper.title}” was restored.", "notice")
     return RedirectResponse(url="/", status_code=303)
+
+
+@router.post("/papers/{paper_id}/delete", dependencies=[Depends(require_admin)])
+def delete_paper(request: Request, paper_id: int, db: Session = Depends(get_db)):
+    """Permanently remove a paper nobody has sat. If students have attempts on it, archive it instead."""
+    from app.routes.review import paper_has_student_work, purge_question
+
+    paper = db.get(models.Paper, paper_id)
+    if not paper:
+        raise HTTPException(status_code=404, detail="Paper not found")
+    if paper.status == "processing":
+        flash(request, "This paper is still being read — wait for it to finish, then delete it.")
+        return RedirectResponse(url=f"/review/{paper_id}", status_code=303)
+    if paper_has_student_work(db, paper.id):
+        flash(request, f"“{paper.title}” has student attempts, so it can't be deleted. Archive it to hide it without erasing history.")
+        return RedirectResponse(url=f"/review/{paper_id}", status_code=303)
+    title = paper.title
+    questions = list(paper.questions)
+    n_questions = len(questions)
+    for q in questions:
+        purge_question(db, q)
+    db.flush()
+    db.expire(paper, ["questions"])
+    paths = [paper.source_pdf_path, paper.answer_pdf_path]
+    images = ingest.images_dir_for(paper.id)
+    db.delete(paper)
+    audit.log(db, request.state.user, "paper.delete", "paper", paper_id, paper_id=paper_id,
+              detail={"title": title, "questions": n_questions})
+    db.commit()
+    for path in paths:
+        if path and os.path.isfile(path):
+            os.remove(path)
+    if os.path.isdir(images):
+        import shutil
+        shutil.rmtree(images, ignore_errors=True)
+    flash(request, f"“{title}” was deleted.", "notice")
+    return RedirectResponse(url="/", status_code=303)

@@ -158,6 +158,11 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 24px 0; }
 .page-head h1 { margin: 0; }
 .page-sub { color: var(--muted); margin: 4px 0 0; font-size: 14.5px; }
 .page-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.page-actions button, .page-actions .btn-link,
+.import-actions button, .import-actions .btn-link {
+  margin: 0;
+}
+.page-head .paper-meta { margin: 4px 0 0; max-width: 74ch; }
 .crumbs { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
 .crumbs a { color: var(--muted); text-decoration: none; }
 .crumbs a:hover { color: var(--accent-strong); text-decoration: underline; }
@@ -196,6 +201,10 @@ button.secondary, .btn-link.secondary-link {
   background: var(--surface); color: var(--ink); border-color: var(--rule-strong);
 }
 button.secondary:hover, .btn-link.secondary-link:hover { background: var(--surface-2); border-color: var(--muted); color: var(--ink); }
+button.danger {
+  background: var(--surface); color: #9b1c1c; border-color: #e4b4b4;
+}
+button.danger:hover { background: #fde8e8; border-color: #c0392b; color: #7a1212; }
 button.big, .btn-link.big { padding: 13px 24px; font-size: 16px; min-height: 48px; }
 button:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
 button:disabled:hover { background: var(--accent); }
@@ -220,6 +229,12 @@ input[type=file]::file-selector-button {
 }
 input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
 textarea { min-height: 72px; resize: vertical; line-height: 1.5; }
+textarea.mono { font-family: Consolas, "Cascadia Mono", ui-monospace, monospace; font-size: 13px; line-height: 1.45; }
+.import-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 4px; }
+.import-actions .paper-meta { margin: 0; }
+.dash-card ol { margin: 0 0 14px; padding-left: 1.25em; }
+.dash-card ol li { margin: 6px 0; color: var(--ink-soft); }
+.dash-card ol li strong { color: var(--ink); }
 fieldset { border: 1px solid var(--rule); border-radius: var(--radius); padding: 16px 18px 18px; margin: 0; display: flex; flex-direction: column; gap: 14px; background: var(--surface); }
 legend { padding: 0 8px; font-weight: 650; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
 .row { display: flex; gap: 14px; }
@@ -276,6 +291,9 @@ legend { padding: 0 8px; font-weight: 650; font-size: 13px; letter-spacing: 0.04
 .dash-card h2 { font-size: 16px; margin: 0 0 12px; color: var(--ink); }
 .dash-card > p:last-child, .dash-card > form:last-child { margin-bottom: 0; }
 .dash-card .btn-link, .dash-card button { margin: 2px 8px 6px 0; }
+.dash-card .page-actions .btn-link, .dash-card .page-actions button,
+.dash-card .import-actions .btn-link, .dash-card .import-actions button,
+.dash-card form > div:last-child button { margin: 0; }
 .stat-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin: 16px 0; }
 .stat { text-align: center; padding: 16px 12px 14px; }
 .stat-num, .big-num { font-family: var(--font); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
@@ -443,10 +461,14 @@ a.result-row:hover { background: var(--surface-2); }
 .q-card.needs-review { border-left: 4px solid var(--red); }
 .q-card.reviewed { border-left: 4px solid var(--green); }
 .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.q-footer { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--rule); display: flex; flex-direction: column; gap: 10px; }
+.q-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.q-actions > button, .q-actions .inline-form { margin: 0; }
+.q-actions .danger-action { margin-left: auto; }
+.quarantine-form { flex-direction: row; align-items: center; gap: 8px; margin: 0; padding: 0; border: 0; width: 100%; }
+.quarantine-form input[type=text] { flex: 1; min-width: 12em; }
+.danger-zone { margin-top: 24px; }
 .history-link { font-size: 13px; margin-left: 10px; font-weight: 500; }
-.quarantine-form { flex-direction: row; align-items: center; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--rule-strong); }
-.quarantine-form input[type=text] { flex: 1; }
-.danger-zone { margin-top: 40px; }
 .version-options { margin: 4px 0 8px; padding-left: 22px; }
 .temp-password-box { padding: 18px; }
 .temp-password { font-family: var(--mono); font-size: 28px; letter-spacing: 2px; margin-top: 8px; word-break: break-all; user-select: all; }
