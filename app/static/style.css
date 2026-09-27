@@ -241,6 +241,9 @@ legend { padding: 0 8px; font-weight: 650; font-size: 13px; letter-spacing: 0.04
 .row > div { flex: 1; min-width: 0; }
 .row.wrap { flex-wrap: wrap; }
 .row.wrap > div { min-width: 150px; }
+fieldset.paper-details { display: block; border: 0; padding: 0; background: transparent; }
+fieldset.paper-details legend { padding: 0 0 12px; color: var(--ink); font-size: 16px; letter-spacing: 0; text-transform: none; }
+.paper-details-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .check-line { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; font-weight: 400; color: var(--ink-soft); }
 .check-line input { width: auto; min-height: 0; margin-top: 4px; box-shadow: none; }
 .inline-form { display: flex; flex-direction: row; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -651,6 +654,7 @@ a.viz-mark { cursor: pointer; }
   .user-table, .audit-table { display: block; overflow-x: auto; max-width: 100%; }
   .options-grid { grid-template-columns: 1fr; }
   .row { flex-wrap: wrap; }
+  .paper-details-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 600px) {

@@ -142,13 +142,9 @@
           Replace questions in “{{ paper.title }}” that have the same number and are still waiting for review (their old text is kept in their history)
         </label>
       {% else %}
-        <div>
-          <label for="title">Paper title</label>
-          <input type="text" id="title" name="title" value="{{ form.title }}" required placeholder="e.g. UPPCS Prelims 2023 GS Paper 1">
-        </div>
-        <fieldset>
-          <legend>Where it came from</legend>
-          <div class="row">
+        <fieldset class="paper-details">
+          <legend>Paper details</legend>
+          <div class="paper-details-grid">
             <div>
               <label for="source_type">Source type</label>
               <select id="source_type" name="source_type">
@@ -158,20 +154,20 @@
             </div>
             <div><label for="source_name">Source name</label>
               <input type="text" id="source_name" name="source_name" value="{{ form.source_name }}"></div>
-          </div>
-          <div class="row">
             <div><label for="test_name">Test name</label><input type="text" id="test_name" name="test_name" value="{{ form.test_name }}"></div>
             <div><label for="test_number">Test number</label><input type="text" id="test_number" name="test_number" value="{{ form.test_number }}"></div>
+            <div><label for="year">Year</label><input type="number" id="year" name="year" value="{{ form.year }}"></div>
             <div>
-              <label for="series">Series</label>
+              <label for="series">Booklet series</label>
               <select id="series" name="series">
                 <option value="">—</option>
                 {% for s in ["A", "B", "C", "D"] %}<option value="{{ s }}" {% if form.series == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
               </select>
             </div>
-          </div>
-          <div class="row">
-            <div><label for="year">Year</label><input type="number" id="year" name="year" value="{{ form.year }}"></div>
+            <div>
+              <label for="title">Paper title</label>
+              <input type="text" id="title" name="title" value="{{ form.title }}" required placeholder="e.g. UPPCS Prelims 2023 GS Paper 1">
+            </div>
             <div>
               <label for="exam_type">Type</label>
               <select id="exam_type" name="exam_type">

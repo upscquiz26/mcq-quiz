@@ -62,6 +62,11 @@ def review_paper(request: Request, paper_id: int, show: str = "all", sort: str =
         "flagged": sum(1 for q in active if q.ocr_flags),
         "clean": sum(1 for q in active if q.status in TO_CONFIRM and not q.ocr_flags and q.correct_answer
                      and q.answer_source != "json"),
+        "bulk_confirmable": sum(1 for q in active if q.status in TO_CONFIRM and q.correct_answer in pool.ANSWER_LETTERS),
+        "bulk_ai_answers": sum(1 for q in active if q.status in TO_CONFIRM and q.correct_answer in pool.ANSWER_LETTERS
+                    and q.answer_source == "json"),
+        "bulk_flagged": sum(1 for q in active if q.status in TO_CONFIRM and q.correct_answer in pool.ANSWER_LETTERS and q.ocr_flags),
+        "bulk_no_answer": sum(1 for q in active if q.status in TO_CONFIRM and q.correct_answer not in pool.ANSWER_LETTERS),
         "ai": sum(1 for q in active if q.source == "ai_json"),
         "ai_answers": sum(1 for q in active if q.answer_source == "json"),
         "no_subject": sum(1 for q in active if not q.subject_id),
@@ -330,6 +335,40 @@ def confirm_clean(request: Request, paper_id: int, db: Session = Depends(get_db)
                   detail={"count": len(confirmed), "numbers": confirmed})
     db.commit()
     flash(request, f"Confirmed {len(confirmed)} question{'s' if len(confirmed) != 1 else ''} with no warnings.", "notice")
+    return RedirectResponse(url=f"/review/{paper_id}", status_code=303)
+
+
+@router.post("/review/{paper_id}/confirm-all")
+def confirm_all(request: Request, paper_id: int, db: Session = Depends(get_db)):
+    """Bulk-confirms answered pending questions, including AI answers and questions with acknowledged warnings."""
+    paper = _paper_or_404(db, paper_id)
+    questions = (
+        db.query(models.Question)
+        .filter(models.Question.paper_id == paper_id, models.Question.status.in_(TO_CONFIRM))
+        .order_by(models.Question.question_number)
+        .all()
+    )
+    confirmed, ai_answers, flagged = [], 0, 0
+    for q in questions:
+        if q.correct_answer not in pool.ANSWER_LETTERS:
+            continue
+        q.status = QStatus.VERIFIED
+        q.reviewed_by, q.reviewed_at = request.state.user.id, datetime.utcnow()
+        q.flags_acknowledged = bool(q.ocr_flags)
+        confirmed.append(q.question_number)
+        ai_answers += q.answer_source == "json"
+        flagged += bool(q.ocr_flags)
+    if confirmed:
+        sample_audit.invalidate(paper)
+        audit.log(db, request.state.user, "question.confirm_bulk", "paper", paper_id, paper_id=paper_id,
+                  detail={"count": len(confirmed), "numbers": confirmed, "ai_answers": ai_answers,
+                          "flagged": flagged, "mode": "all_answered"})
+    db.commit()
+    remaining = len(questions) - len(confirmed)
+    message = f"Confirmed {len(confirmed)} answered question{'s' if len(confirmed) != 1 else ''}, including {ai_answers} AI-supplied and {flagged} flagged."
+    if remaining:
+        message += f" {remaining} question{'s' if remaining != 1 else ''} without a valid answer remain in review."
+    flash(request, message, "notice")
     return RedirectResponse(url=f"/review/{paper_id}", status_code=303)
 
 

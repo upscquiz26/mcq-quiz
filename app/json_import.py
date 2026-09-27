@@ -71,6 +71,7 @@ RULES
 - Do not correct Hindi spelling, matras or grammar. Copy it as printed.
 - Never guess an answer. Never guess correct_answer. Use it only if the answer
   key or the document itself states it. Otherwise set it to null.
+- Use one shared answer field per question; never emit answer_en or answer_hi.
 - Same for explanation and explanation_hi: copy if present, else null.
   Do not write your own.
 - Keep statement lists inside the question text, one per line, using \\n.
@@ -438,8 +439,7 @@ def _check_question(item, index: int, part: str, report: Report, subject_names: 
         err("\"question\" is missing or empty.")
     if not complete_en and not complete_hi and len(report.errors) == errors_before_options:
         err("\"options\" must be an object with the keys a, b, c and d.")
-    # A language given only in part (its text without its options, or the other way round) is importable but flagged, as long as the
-    # other language is complete enough to use.
+    # Preserve an incomplete translation for admin review, but never treat it as a usable language version.
     for label, has_text, has_options, other_complete in (("English", bool(text), bool(options), complete_hi), ("Hindi", bool(text_hi), bool(options_hi), complete_en)):
         if has_text != has_options and (has_text or has_options) and other_complete:
             what = "question text without its options" if has_text else "options without a question text"
@@ -447,7 +447,15 @@ def _check_question(item, index: int, part: str, report: Report, subject_names: 
             if "language_incomplete" not in lang_flags:
                 lang_flags.append("language_incomplete")
 
+    for localized_answer in ("answer_en", "answer_hi"):
+        if localized_answer in item:
+            err(f'"{localized_answer}" is not supported; use one shared "correct_answer" (or "answer") field.')
     answer = item.get("correct_answer")
+    if "answer" in item:
+        if answer not in (None, "") and item["answer"] not in (None, "") and answer != item["answer"]:
+            err('"answer" and "correct_answer" disagree; provide one shared answer value.')
+        elif answer in (None, ""):
+            answer = item["answer"]
     if answer is not None and answer != "":
         letter = _parse_answer_letter(answer)
         if letter:

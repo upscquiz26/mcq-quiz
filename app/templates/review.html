@@ -140,10 +140,13 @@
         </form>
       {% endif %}
 
-      {% if counts.clean %}
-        <form method="post" action="/review/{{ paper.id }}/confirm-clean"
-              onsubmit="return confirm('Confirm the {{ counts.clean }} questions that have an answer and no warnings, without checking each one?');">
-          <button type="submit" class="secondary">Confirm all {{ counts.clean }} without warnings</button>
+      {% if counts.to_confirm %}
+        <form method="post" action="/review/{{ paper.id }}/confirm-all"
+              onsubmit="return confirm('Confirm {{ counts.bulk_confirmable }} answered questions, including {{ counts.bulk_ai_answers }} AI-supplied answers and {{ counts.bulk_flagged }} flagged questions? Check them against the printed source first. Flags will be acknowledged. {{ counts.bulk_no_answer }} questions without a valid answer will remain in review. Continue?');">
+          <button type="submit" class="secondary" {% if not counts.bulk_confirmable %}disabled title="Questions need a valid answer before they can be confirmed."{% endif %}>
+            Confirm all {{ counts.bulk_confirmable }} answered questions
+          </button>
+          {% if counts.bulk_no_answer %}<span class="paper-meta">{{ counts.bulk_no_answer }} question{{ "s" if counts.bulk_no_answer != 1 else "" }} without a valid answer will remain in review.</span>{% endif %}
         </form>
       {% endif %}
     </div></div>
@@ -265,6 +268,42 @@
       </div>
       <div class="paper-meta">Suggestions come from keywords in the question and are only hints: they sit beside the subject box and nothing changes until you accept one.</div>
     </details>
+
+    <form method="post" action="/review/{{ paper.id }}/questions/add" class="tool-box" id="add-question">
+      <strong>Add one question by hand</strong>
+      <p class="page-sub">It waits for review like an imported question — students never see it until you confirm and publish.</p>
+      <div class="options-grid">
+        <div>
+          <label>Number</label>
+          <input type="number" name="question_number" min="1" value="{{ next_number }}" required>
+        </div>
+        <div>
+          <label>Correct answer (optional)</label>
+          <select name="correct_answer">
+            <option value="">Not set yet</option>
+            <option value="A">A</option>
+            <option value="B">B</option>
+            <option value="C">C</option>
+            <option value="D">D</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label>Question text</label>
+        <textarea name="text" required></textarea>
+      </div>
+      <div class="options-grid">
+        <div><label>Option A</label><input type="text" name="option_a" required></div>
+        <div><label>Option B</label><input type="text" name="option_b" required></div>
+        <div><label>Option C</label><input type="text" name="option_c" required></div>
+        <div><label>Option D</label><input type="text" name="option_d" required></div>
+      </div>
+      <div>
+        <label>Explanation (optional)</label>
+        <textarea name="explanation"></textarea>
+      </div>
+      <button type="submit">Add question</button>
+    </form>
 
     {% if questions %}
     <form method="post" action="/review/{{ paper.id }}/bulk-subject" id="bulk-form" class="tool-box bulk-bar">
@@ -464,42 +503,6 @@
     {% else %}
       <p class="empty-state">No questions to show{% if show != "all" %} for this filter{% endif %}.</p>
     {% endfor %}
-
-    <form method="post" action="/review/{{ paper.id }}/questions/add" class="tool-box" id="add-question">
-      <strong>Add one question by hand</strong>
-      <p class="page-sub">It waits for review like an imported question — students never see it until you confirm and publish.</p>
-      <div class="options-grid">
-        <div>
-          <label>Number</label>
-          <input type="number" name="question_number" min="1" value="{{ next_number }}" required>
-        </div>
-        <div>
-          <label>Correct answer (optional)</label>
-          <select name="correct_answer">
-            <option value="">Not set yet</option>
-            <option value="A">A</option>
-            <option value="B">B</option>
-            <option value="C">C</option>
-            <option value="D">D</option>
-          </select>
-        </div>
-      </div>
-      <div>
-        <label>Question text</label>
-        <textarea name="text" required></textarea>
-      </div>
-      <div class="options-grid">
-        <div><label>Option A</label><input type="text" name="option_a" required></div>
-        <div><label>Option B</label><input type="text" name="option_b" required></div>
-        <div><label>Option C</label><input type="text" name="option_c" required></div>
-        <div><label>Option D</label><input type="text" name="option_d" required></div>
-      </div>
-      <div>
-        <label>Explanation (optional)</label>
-        <textarea name="explanation"></textarea>
-      </div>
-      <button type="submit">Add question</button>
-    </form>
 
     {% if paper.status == "ready" and not paper.archived_at %}
     <form method="post" enctype="multipart/form-data" action="/admin/import/json/validate" class="tool-box" id="add-json">

@@ -53,6 +53,7 @@ SPEC_RULES = [
     "- Never translate. Never transliterate. Never invent Hindi or English. If a\n  question exists in only one language in the document, leave the other\n  language's fields null. Do not create a Hindi or English version yourself.",
     "- Do not correct Hindi spelling, matras or grammar. Copy it as printed.",
     "- Never guess an answer. Never guess correct_answer. Use it only if the answer\n  key or the document itself states it. Otherwise set it to null.",
+    "- Use one shared answer field per question; never emit answer_en or answer_hi.",
     "- Same for explanation and explanation_hi: copy if present, else null.\n  Do not write your own.",
     "- Keep statement lists inside the question text, one per line, using \\n.",
     "- Each language given for a question has exactly 4 options with keys a, b, c, d.\n  If Hindi options are labelled क, ख, ग, घ, map them in order to a, b, c, d.",
@@ -169,6 +170,30 @@ def test_each_kind_of_bad_question_is_an_error_naming_its_number(change, expecte
     assert bad, errors(r)
     assert bad[0].number == (2 if change.get("number", 2) == 2 else None) or "number" in change
     assert sorted(r.questions) == [1, 3]                                       # the good ones are still parsed
+
+
+def test_english_only_hindi_only_and_bilingual_questions_are_kept_as_one_record():
+    hindi = {"question_hi": "भारत की राजधानी कौन-सी है?", "options_hi": {
+        "a": "मुंबई", "b": "नई दिल्ली", "c": "कोलकाता", "d": "चेन्नई"}}
+    r = report(doc([q(1), q(2, question=None, options=None, **hindi), q(3, **hindi)]))
+    assert r.ok and sorted(r.questions) == [1, 2, 3]
+    assert r.questions[1]["text"] and not r.questions[1]["text_hi"]
+    assert not r.questions[2]["text"] and r.questions[2]["text_hi"] and r.questions[2]["answer"] == "B"
+    assert r.questions[3]["text"] and r.questions[3]["text_hi"] and r.questions[3]["answer"] == "B"
+
+
+@pytest.mark.parametrize("change, expected", [
+    ({"answer": "c", "correct_answer": None}, "C"),
+    ({"answer_hi": "ग"}, '"answer_hi" is not supported'),
+    ({"answer_en": "C"}, '"answer_en" is not supported'),
+    ({"correct_answer": "B", "answer": "c"}, '"answer" and "correct_answer" disagree'),
+])
+def test_answer_is_one_shared_value(change, expected):
+    r = report(doc([q(1, **change)]))
+    if expected in ("B", "C"):
+        assert r.ok and r.questions[1]["answer"] == expected
+    else:
+        assert not r.ok and any(expected in message for message in errors(r))
 
 
 def test_option_keys_may_be_in_any_case_and_answers_in_any_common_spelling():
@@ -424,13 +449,19 @@ def test_importing_creates_a_paper_of_questions_that_wait_for_review(admin, db):
     r = validate(admin, ("part1.json", doc([q(1, explanation="Because it is so.", uncertain=True), q(2, correct_answer=None),
                                              q(3, has_image=True, question="See the map [IMAGE] and answer this one please")],
                                             expected_total=3)))
+    for field in ("source_type", "source_name", "test_name", "test_number", "year", "series", "title", "exam_type"):
+        assert f'name="{field}"' in r.text
+    assert "Paper details" in r.text and "Booklet series" in r.text
     token = token_of(r)
     title = f"Created from JSON {next(_run)}"
-    done = apply(admin, token, title=title, expected_total="3", year="2026", series="a")
+    done = apply(admin, token, title=title, expected_total="3", year="2026", series="a", source_type="coaching_test",
+                 source_name="Make IAS", test_name="GS Sectional Test", test_number="1", exam_type="sectional")
     assert done.status_code == 303
 
     paper = paper_by_title(db, title)
     assert paper.status == "ready" and paper.publish_status == "draft" and paper.series == "A" and paper.year == 2026
+    assert (paper.source_type, paper.source_name, paper.test_name, paper.test_number, paper.exam_type) == (
+        "coaching_test", "Make IAS", "GS Sectional Test", "1", "sectional")
     assert paper.expected_total == 3 and paper.marks_per_question == 2.0 and paper.key_source == "AI-supplied (JSON) — unverified"
     assert done.headers["location"] == f"/review/{paper.id}"
     qs = questions_by_number(db, paper)
@@ -469,21 +500,25 @@ def test_nothing_from_json_can_go_live_until_it_is_reviewed(admin, db, make_user
     assert db.get(models.Paper, paper.id).publish_status == "draft"                              # blocked: nothing reviewed
     assert pool.live_questions(db).filter(models.Question.paper_id == paper.id).count() == 0
 
-    # The bulk confirm skips AI-supplied answers — even if someone cleared their warning flags first.
-    assert "Confirm all" not in admin.get(f"/review/{paper.id}").text
+    # The clean-only bulk action stays safe; the explicit confirm-all action can include AI answers.
+    page = admin.get(f"/review/{paper.id}").text
+    assert "Confirm all 5 answered questions" in page and "AI-supplied answers" in page
+    original_flags = {x.id: x.ocr_flags for x in db.query(models.Question).filter_by(paper_id=paper.id)}
     for x in db.query(models.Question).filter_by(paper_id=paper.id):
         x.ocr_flags = None
     db.commit()
-    assert "Confirm all" not in admin.get(f"/review/{paper.id}").text
     admin.post(f"/review/{paper.id}/confirm-clean")
     db.rollback()
     assert all(x.status == models.QStatus.NEEDS_REVIEW for x in db.query(models.Question).filter_by(paper_id=paper.id))
+    for x in db.query(models.Question).filter_by(paper_id=paper.id):
+        x.ocr_flags = original_flags[x.id]
+    db.commit()
 
-    # Individual confirmation is the way through.
-    for x in questions_by_number(db, paper).values():
-        assert admin.post(f"/review/{paper.id}/question/{x.id}", data={
-            "text": x.text, "option_a": x.option_a, "option_b": x.option_b, "option_c": x.option_c, "option_d": x.option_d,
-            "correct_answer": x.correct_answer, "subject_id": str(x.subject_id or "")}).status_code == 303
+    assert admin.post(f"/review/{paper.id}/confirm-all").status_code == 303
+    db.rollback()
+    confirmed = db.query(models.Question).filter_by(paper_id=paper.id).all()
+    assert all(x.status == models.QStatus.VERIFIED and x.flags_acknowledged for x in confirmed)
+    assert all(x.answer_source == "json" for x in confirmed)
     admin.post(f"/papers/{paper.id}/publish")                                                    # five unedited confirmations: audit first
     db.rollback()
     assert db.get(models.Paper, paper.id).publish_status == "draft"
