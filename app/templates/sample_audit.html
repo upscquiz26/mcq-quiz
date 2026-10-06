@@ -55,7 +55,7 @@
           {% if q.text %}<p class="q-text">{{ q.text }}</p>{% endif %}
           {% if q.question_hi %}<p class="q-text" lang="hi">{{ q.question_hi }}</p>{% endif %}
           <ul class="opt-list">
-            {% for letter, text, text_hi in [("A", q.option_a, q.option_a_hi), ("B", q.option_b, q.option_b_hi), ("C", q.option_c, q.option_c_hi), ("D", q.option_d, q.option_d_hi)] %}
+            {% for letter, text, text_hi in option_rows(q) %}
               <li class="opt static {{ 'correct' if letter == q.correct_answer }}"><span class="opt-letter">{{ letter }}</span><span class="opt-text">{{ text }}{% if text and text_hi %} · {% endif %}{% if text_hi %}<span lang="hi">{{ text_hi }}</span>{% endif %}</span>
                 {% if letter == q.correct_answer %}<span class="opt-tag">Marked correct</span>{% endif %}</li>
             {% endfor %}

@@ -9,7 +9,7 @@ Formats understood (detected in this order):
   3. series blocks                               Series A  1-b 2-d ...   Series B  1-c 2-a ...
   4. pairs anywhere                              1-b 2-d 3-a   |   1. (b)   |   Q1: B   |   1) b   |   1 b 2 d   |   1b 2d
 
-Only the letters a-d are answers (any case). A key written with digits (1-4) is refused rather than guessed at, and a question number
+Only the letters a-e are answers (any case). A key written with digits (1-4) is refused rather than guessed at, and a question number
 given two different letters is an error. Every problem is listed; nothing is silently skipped.
 """
 import re
@@ -20,7 +20,7 @@ from app.answer_key import ANSWER_LINE, _clean_explanation
 MAX_NUMBER = 999
 SERIES_LETTERS = "ABCD"
 
-PAIR = re.compile(r"(?<![\w/])(?:Q(?:uestions?|s)?\.?\s*)?(\d{1,3})(?:\s*[-–—:.)=|,]\s*|\s+|(?=[A-Da-d(]))\(?\s*([A-Da-d])\s*\)?(?![A-Za-z0-9])")
+PAIR = re.compile(r"(?<![\w/])(?:Q(?:uestions?|s)?\.?\s*)?(\d{1,3})(?:\s*[-–—:.)=|,]\s*|\s+|(?=[A-Ea-e(]))\(?\s*([A-Ea-e])\s*\)?(?![A-Za-z0-9])")
 DIGIT_PAIR = re.compile(r"(?<![\w/])(\d{1,3})\s*[-–—:.)=|,]\s*\(?\s*([1-4])\s*\)?(?![A-Za-z0-9])")
 SERIES_ROW = re.compile(
     r"^[ \t]*(?:Q\.?[ \t]*)?(\d{1,3})[\s|,;:.)\-]+([A-Da-d])[\s|,;:/\-]+([A-Da-d])[\s|,;:/\-]+([A-Da-d])[\s|,;:/\-]+([A-Da-d])[ \t]*$", re.M)
@@ -200,9 +200,9 @@ def parse_key_bytes(data: bytes, filename: str, series: str | None = None, workd
 # Only unambiguous phrasings, and only a letter in brackets: "the correct answer is (c)", "option (c) is correct",
 # "Hence, option (b) is correct". Prose like "A is true" never counts.
 _SAYS = [
-    re.compile(r"(?:correct|right|desired|final)\s+(?:answer|option)\s*(?:is|:|=|-)?\s*(?:option\s*)?\(\s*([a-dA-D])\s*\)", re.I),
-    re.compile(r"(?:answer|option)\s*(?:is|:|=)?\s*\(\s*([a-dA-D])\s*\)\s*(?:is\s+)?(?:the\s+)?(?:correct|right)", re.I),
-    re.compile(r"\boption\s*\(\s*([a-dA-D])\s*\)\s+is\s+(?:the\s+)?(?:correct|right)", re.I),
+    re.compile(r"(?:correct|right|desired|final)\s+(?:answer|option)\s*(?:is|:|=|-)?\s*(?:option\s*)?\(\s*([a-eA-E])\s*\)", re.I),
+    re.compile(r"(?:answer|option)\s*(?:is|:|=)?\s*\(\s*([a-eA-E])\s*\)\s*(?:is\s+)?(?:the\s+)?(?:correct|right)", re.I),
+    re.compile(r"\boption\s*\(\s*([a-eA-E])\s*\)\s+is\s+(?:the\s+)?(?:correct|right)", re.I),
 ]
 
 

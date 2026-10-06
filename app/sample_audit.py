@@ -28,7 +28,7 @@ AUDIT_FRACTION = 0.10
 AUDIT_MIN = 5
 AUDIT_FAIL_AT = 3
 CONFIRMED = (QStatus.VERIFIED, QStatus.LIVE)
-CONTENT_FIELDS = ("text", "option_a", "option_b", "option_c", "option_d", "correct_answer", "has_image",
+CONTENT_FIELDS = ("text", "option_a", "option_b", "option_c", "option_d", "option_e", "correct_answer", "has_image",
                   "question_hi", "option_a_hi", "option_b_hi", "option_c_hi", "option_d_hi")
 FILING_REASONS = ("subject/topic/difficulty", "bulk subject change", "subject suggestion accepted")   # version reasons that aren't content edits
 

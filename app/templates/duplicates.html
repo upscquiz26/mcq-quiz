@@ -12,7 +12,8 @@
     {% set shown = primary(card.q) %}
     <p class="q-text" {% if shown[0] == "hi" %}lang="hi"{% endif %}>{{ shown[1] }}</p>
     <ul class="opt-list">
-      {% for letter, text in [("A", shown[2][0]), ("B", shown[2][1]), ("C", shown[2][2]), ("D", shown[2][3])] %}
+      {% for text in shown[2] %}
+        {% set letter = "ABCDE"[loop.index0] %}
         <li class="opt static {{ 'correct' if letter == card.q.correct_answer }}"><span class="opt-letter">{{ letter }}</span><span class="opt-text">{{ text }}</span>
           {% if letter == card.q.correct_answer %}<span class="opt-tag">Marked correct</span>{% endif %}</li>
       {% endfor %}

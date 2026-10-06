@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from app import auth, models
+from app import auth, language, models
 from app.database import get_db
 from app.models import AttemptKind
 from app.practice import attempts as engine
@@ -62,6 +62,13 @@ def revision_page(request: Request, subject_id: str = "", topic_id: str = "", re
                             if e["question"].topic_id}, key=lambda x: x[1])
     reason_choices = [(r.name, grading.REASON_LABELS[r]) for r in grading.EDITABLE_REASONS
                       if any(e["reason_name"] == r.name for e in everything)]
+    due_reason_counts = {}
+    for entry in everything:
+        if entry["state"] == "due" and entry["reason_name"]:
+            name = entry["reason_name"]
+            due_reason_counts[name] = due_reason_counts.get(name, 0) + 1
+    due_reason_choices = [(r.name, grading.REASON_LABELS[r], due_reason_counts[r.name])
+                          for r in grading.EDITABLE_REASONS if due_reason_counts.get(r.name)]
     state_counts = {key: sum(1 for e in everything if key == "all" or e["state"] == key or
                              (key == "revise" and e["state"] in ("due", "scheduled")))
                     for key in revision.STATE_FILTERS}
@@ -72,6 +79,7 @@ def revision_page(request: Request, subject_id: str = "", topic_id: str = "", re
             "request": request, "entries": shown[:NOTEBOOK_ROWS], "total_shown": len(shown),
             "row_limit": NOTEBOOK_ROWS, "due_now": revision.due_count(db, user.id),
             "subject_choices": subject_choices, "topic_choices": topic_choices, "reason_choices": reason_choices,
+            "due_reason_choices": due_reason_choices,
             "state_filters": revision.STATE_FILTERS, "state_labels": revision.STATE_LABELS, "state_counts": state_counts,
             "selected": {"subject_id": subject, "topic_id": topic, "reason": reason_name, "state": state},
             "reason_labels": grading.REASON_LABELS, "count_choices": COUNT_CHOICES,
@@ -88,17 +96,16 @@ def start_mistake_practice(
     db: Session = Depends(get_db),
 ):
     user = request.state.user
+    mode = "due" if mode == "due" else "all"
     try:
         subject, topic, reason_name = _opt_int(subject_id), _opt_int(topic_id), _reason(reason)
-        wanted = int((count or "").strip() or 10)
+        wanted = engine.MAX_SESSION_QUESTIONS if mode == "due" else int((count or "").strip() or 10)
     except ValueError:
         flash(request, "Please choose valid options.")
         return RedirectResponse(url="/revision", status_code=303)
-    if wanted < 1:
+    if mode == "all" and wanted < 1:
         flash(request, "Choose how many questions you want (at least 1).")
         return RedirectResponse(url="/revision", status_code=303)
-    mode = "due" if mode == "due" else "all"
-
     ids = revision.mistake_practice_ids(
         db, user.id, mode=mode, subject_id=subject, topic_id=topic, reason=reason_name,
         include_mastered=include_mastered.lower() in ("1", "true", "on", "yes"))
@@ -145,7 +152,7 @@ def question_page(request: Request, question_id: int, db: Session = Depends(get_
         "question_view.html",
         {
             "request": request, "question": question, "reveal": reveal, "locked": locked,
-            "options": [("A", question.option_a), ("B", question.option_b), ("C", question.option_c), ("D", question.option_d)],
+                "options": [(letter, text) for letter, text, _ in language.option_rows(question)],
             "explanation_label": engine.explanation_label(question),
             "history": history, "item": item, "kind_labels": AttemptKind.LABELS,
             "reason_labels": grading.REASON_LABELS, "confidence_labels": engine.CONFIDENCE_LABELS,

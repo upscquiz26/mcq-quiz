@@ -55,6 +55,8 @@ COLUMN_MIGRATIONS = {
     },
     "questions": {
         "explanation": "TEXT",
+        "option_e": "TEXT",
+        "source_ref": "TEXT",
         "source_image_path": "VARCHAR",
         "ocr_flags": "VARCHAR",
         "status": "VARCHAR NOT NULL DEFAULT 'needs_review'",

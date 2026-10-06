@@ -4,7 +4,7 @@
   <div class="page-head">
     <div>
       <h1>Welcome, {{ request.state.user.display_name or request.state.user.username }}</h1>
-      <p class="page-sub">{% if due_today %}{{ due_today }} revision question{{ "s" if due_today != 1 else "" }} waiting. {% endif %}Pick up where you left off, or start something new.</p>
+      <p class="page-sub">Pick up where you left off, or start something new.</p>
     </div>
 
   </div>
@@ -64,13 +64,19 @@
       {% endif %}
     </section>
 
-    {% if due_today %}
-      <section class="dash-card">
-        <div class="card-title"><span class="icon-badge warm"><span class="icon i-revision" aria-hidden="true"></span></span><h2>Revision due today</h2></div>
-        <p><strong class="big-num">{{ due_today }}</strong> question{{ "s" if due_today != 1 else "" }} from your mistakes are due.</p>
-        <p><a href="/revision" class="btn-link">Revise now</a></p>
-      </section>
-    {% endif %}
+    <section class="dash-card">
+      <div class="card-title"><span class="icon-badge warm"><span class="icon i-revision" aria-hidden="true"></span></span><h2>Fix your mistakes</h2></div>
+      {% if due_now %}
+        <p><strong class="big-num">{{ due_now }}</strong> due right now</p>
+        <form method="post" action="/revision/start">
+          <input type="hidden" name="mode" value="due">
+          <button type="submit">Start revision</button>
+        </form>
+      {% else %}
+        <p class="paper-meta">Nothing due right now.</p>
+      {% endif %}
+      <p class="paper-meta"><a href="/revision">Open your mistake notebook</a></p>
+    </section>
 
     {% if recent_tests %}
       <section class="dash-card">

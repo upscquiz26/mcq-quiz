@@ -356,15 +356,26 @@ def _mistakes(db, make_paper, make_user, username, n=4, wrong=(1, 2, 3)):
     return student, user_id(db, username), {i: questions_of(db, paper)[i].id for i in range(1, n + 1)}
 
 
+def test_due_revision_includes_all_due_questions_without_a_count_parameter(db, make_paper, make_user):
+    student, uid, qids = _mistakes(db, make_paper, make_user, "all_duerevision", n=12, wrong=tuple(range(1, 13)))
+    for item in items_of(db, uid, list(qids.values())):
+        item.due_date = revision.today()
+    db.commit()
+
+    response = student.post("/revision/start", data={"mode": "due"})
+    attempt = attempt_of(db, response)
+    assert len(attempt.responses) == 12
+
+
 def test_revising_what_is_due_takes_the_most_overdue_first_and_updates_the_schedule(db, make_paper, make_user):
     student, uid, q = _mistakes(db, make_paper, make_user, "revisedue")
     today = revision.today()
     for item, offset in zip(items_of(db, uid, [q[1], q[2], q[3]]), (-1, -5, 0)):     # Q2 is the most overdue
         item.due_date = today + timedelta(days=offset)
     db.commit()
-    assert "3 questions due for revision" in page(student, "/revision")
+    assert "3 due right now" in page(student, "/revision")
 
-    r = student.post("/revision/start", data={"mode": "due", "count": "10"})
+    r = student.post("/revision/start", data={"mode": "due"})
     attempt = attempt_of(db, r)
     assert attempt.kind == AttemptKind.MISTAKE and attempt.status == AttemptStatus.IN_PROGRESS
     order = [db.get(models.Question, x.question_id).question_number for x in attempt.responses]
@@ -451,12 +462,19 @@ def test_bad_mistake_practice_requests_are_refused(db, make_user, data, fragment
 
 def test_the_home_page_and_revision_page_show_what_is_due(db, make_paper, make_user):
     student, uid, q = _mistakes(db, make_paper, make_user, "homeduestudent", n=2, wrong=(1,))
-    assert "Revision due today" not in student.get("/").text                    # due tomorrow, not today
+    home_before_due = student.get("/").text
+    assert "Fix your mistakes" in home_before_due
+    assert "Nothing due right now" in home_before_due                          # due tomorrow, not today
     item_of(db, uid, q[1]).due_date = revision.today()
     db.commit()
     home = page(student, "/")
-    assert "Revision due today" in home and "1 question from your mistakes are due" in home
-    assert "1 question due for revision" in page(student, "/revision") and "Revise what's due" in page(student, "/revision")
+    assert "Fix your mistakes" in home and "1 due right now" in home and "Start revision" in home
+    revision_page = page(student, "/revision")
+    assert "1 due right now" in revision_page and "Start revision" in revision_page
+    assert "Misconception / overconfidence (1)" in revision_page
+    revision_html = student.get("/revision").text
+    due_form = re.search(r'<form method="post" action="/revision/start">.*?</form>', revision_html, re.S)
+    assert due_form and 'name="count"' not in due_form.group(0)
 
 
 def test_a_student_with_no_mistakes_gets_a_friendly_page(make_user):
@@ -556,7 +574,7 @@ def test_you_can_only_keep_questions_you_have_met_and_that_are_live(db, make_pap
     admin.post(f"/papers/{paper.id}/unpublish")                                              # not live any more
     assert student.post(f"/questions/{seen.id}/bookmark", data={"on": "0"}).status_code == 404
     assert student.get(f"/questions/{seen.id}").status_code == 404
-    assert str(seen.id) not in student.get("/bookmarks").text
+    assert f'href="/questions/{seen.id}"' not in student.get("/bookmarks").text
 
 
 def test_bookmarks_and_notes_are_private(db, make_paper, make_user):

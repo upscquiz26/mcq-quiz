@@ -13,7 +13,7 @@ from app import audit, models
 
 # The parts of a question that a reviewer can change. Status is deliberately not here.
 CONTENT_FIELDS = (
-    "text", "option_a", "option_b", "option_c", "option_d",
+    "text", "option_a", "option_b", "option_c", "option_d", "option_e",
     "correct_answer", "subject_id", "topic_id", "difficulty", "explanation", "has_image", "explanation_status",
     "question_hi", "option_a_hi", "option_b_hi", "option_c_hi", "option_d_hi", "explanation_hi", "explanation_hi_status",
 )

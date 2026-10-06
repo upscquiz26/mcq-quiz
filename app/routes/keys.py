@@ -88,7 +88,7 @@ def compare(paper: models.Paper, parse: key_parse.KeyParse) -> dict:
     mismatches = [n for n, q in questions.items() if n in parse.answers and q.explanation_says and q.explanation_says != parse.answers[n]]
     return {
         "questions": len(questions), "found": len(parse.answers), "new": new, "same": same, "different": different, "extra": extra,
-        "missing": missing, "distribution": {letter: counts.get(letter, 0) for letter in "ABCD"}, "spread": spread,
+        "missing": missing, "distribution": {letter: counts.get(letter, 0) for letter in "ABCDE"}, "spread": spread,
         "mismatches": mismatches,
     }
 
@@ -204,6 +204,9 @@ def key_apply(
     for number, letter in sorted(parse.answers.items()):
         q = questions.get(number)
         if q is None:
+            counts["ignored"] += 1
+            continue
+        if letter == "E" and not q.option_e:
             counts["ignored"] += 1
             continue
         current = q.correct_answer

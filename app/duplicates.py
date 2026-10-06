@@ -56,9 +56,9 @@ def norm_hash(q) -> str:
 def answer_text(q) -> str | None:
     """The normalised text of the option marked correct — what the answer *means*, whatever letter it has in this copy."""
     letter = (q.correct_answer or "").upper()
-    if letter not in ("A", "B", "C", "D"):
+    if letter not in ("A", "B", "C", "D", "E"):
         return None
-    return _words(language.primary(q)[2]["ABCD".index(letter)]) or None
+    return _words(language.primary(q)[2]["ABCDE".index(letter)]) or None
 
 
 def answers_differ(a, b) -> bool:

@@ -13,7 +13,7 @@ load_dotenv()
 
 from app import auth, errors, models, settings, startup
 from app.database import BASE_DIR, SessionLocal
-from app.routes import (account, admin_dashboard, admin_performance, admin_reports, admin_tools, admin_users, analytics,
+from app.routes import (account, admin_dashboard, admin_performance, admin_reports, admin_tools, admin_users, analytics, book_import,
                         duplicates, file_import, json_import, keys, leaderboard, papers, practice, question_reports, quarantine, results, review, sample_audit, suspicious, tests)
 from app.routes import revision as revision_routes
 from app.routes import auth as auth_routes
@@ -128,6 +128,7 @@ app.include_router(leaderboard.router)
 app.include_router(question_reports.router)
 app.include_router(admin_reports.router)
 app.include_router(json_import.router)
+app.include_router(book_import.router)
 app.include_router(file_import.router)
 app.include_router(keys.router)
 app.include_router(duplicates.router)

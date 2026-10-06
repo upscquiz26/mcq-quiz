@@ -9,7 +9,7 @@
     <div>
       <h1>{{ paper.title }}</h1>
       <p class="paper-meta">
-        {% if paper.source_type %}{{ {"official_pyq": "Official PYQ", "coaching_test": "Coaching test"}[paper.source_type] }}{% endif %}
+        {% if paper.source_type %}{{ {"official_pyq": "Official PYQ", "coaching_test": "Coaching test", "book": "Book"}.get(paper.source_type, paper.source_type) }}{% endif %}
         {% if paper.source_name %}· {{ paper.source_name }}{% endif %}
         {% if paper.test_name or paper.test_number %}· {{ paper.test_name or "" }} {{ paper.test_number or "" }}{% endif %}
         {% if paper.series %}· Series {{ paper.series }}{% endif %}
@@ -285,6 +285,7 @@
             <option value="B">B</option>
             <option value="C">C</option>
             <option value="D">D</option>
+            <option value="E">E</option>
           </select>
         </div>
       </div>
@@ -297,6 +298,7 @@
         <div><label>Option B</label><input type="text" name="option_b" required></div>
         <div><label>Option C</label><input type="text" name="option_c" required></div>
         <div><label>Option D</label><input type="text" name="option_d" required></div>
+        <div><label>Option E (optional)</label><input type="text" name="option_e"></div>
       </div>
       <div>
         <label>Explanation (optional)</label>
@@ -331,6 +333,8 @@
         <div class="q-num">
           <input type="checkbox" class="pick" name="question_ids" value="{{ q.id }}" form="bulk-form" aria-label="Select Q{{ q.question_number }}">
           Q{{ q.question_number or loop.index }}
+          {% set book_ref = book_source_ref(q) %}
+          {% if book_ref %}<span class="paper-meta">{{ book_ref.chapter }} · printed Q{{ book_ref.chapter_question_number }}{% if book_ref.page %} · page {{ book_ref.page }}{% endif %}</span>{% endif %}
           {% if needs_confirm %}<span class="flag">Needs review</span>
           {% elif q.status == "live" %}<span class="flag ok">Live</span>
           {% else %}<span class="flag ok">Verified</span>{% endif %}
@@ -390,6 +394,7 @@
                   <div><label>Option B</label><input type="text" name="option_b" value="{{ q.option_b }}"></div>
                   <div><label>Option C</label><input type="text" name="option_c" value="{{ q.option_c }}"></div>
                   <div><label>Option D</label><input type="text" name="option_d" value="{{ q.option_d }}"></div>
+                  {% if q.option_e %}<div><label>Option E</label><input type="text" name="option_e" value="{{ q.option_e }}"></div>{% endif %}
                 </div>
               </div>
             {% endif %}
@@ -412,10 +417,10 @@
           </div>
           <div class="row">
             <div>
-              <label>Correct answer {% if q.answer_source == "key_pdf" %}(from answer key){% elif q.answer_source == "json" %}(AI-supplied — check it){% endif %}</label>
+              <label>Correct answer {% if q.answer_source == "key_pdf" %}(from answer key){% elif q.answer_source == "json" %}(AI-supplied — check it){% elif q.answer_source == "book_json" %}(from book JSON — check it){% endif %}</label>
               <select name="correct_answer" required>
                 <option value="" {% if not q.correct_answer %}selected{% endif %}>Select…</option>
-                {% for letter in ["A", "B", "C", "D"] %}
+                {% for letter in (["A", "B", "C", "D", "E"] if q.option_e else ["A", "B", "C", "D"]) %}
                   <option value="{{ letter }}" {% if q.correct_answer == letter %}selected{% endif %}>{{ letter }}</option>
                 {% endfor %}
               </select>

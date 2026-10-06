@@ -30,7 +30,7 @@ def _card(db: Session, q: models.Question) -> dict:
 
 def _answer_shown(q: models.Question) -> str:
     letter = (q.correct_answer or "").upper()
-    return f"{letter}: {getattr(q, 'option_' + letter.lower())}" if letter in ("A", "B", "C", "D") else "none"
+    return f"{letter}: {getattr(q, 'option_' + letter.lower())}" if letter in ("A", "B", "C", "D", "E") else "none"
 
 
 @router.get("/admin/duplicates")

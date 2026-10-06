@@ -22,30 +22,55 @@
         <li class="test-card">
           <span class="paper-title">{{ t.paper.title }}</span>
           <div class="paper-meta">
-            {{ t.count }} question{{ "s" if t.count != 1 else "" }} · {{ t.minutes }} minutes
+            {{ t.count }} question{{ "s" if t.count != 1 else "" }} · suggested {{ t.minutes }} minutes
             {% if t.scheme_ready %}
               · {{ t.paper.marks_per_question|marks }} mark{{ "s" if t.paper.marks_per_question != 1 else "" }} each,
               −{{ (t.paper.negative_fraction * t.paper.marks_per_question)|marks }} for a wrong answer
+            {% else %}
+              · choose scoring for each timed sitting
             {% endif %}
           </div>
           <div class="test-actions">
             {% if t.open_id %}
-              <a href="/attempts/{{ t.open_id }}" class="btn-link">Resume — the clock is running</a>
-            {% elif t.scheme_ready %}
+              <a href="/attempts/{{ t.open_id }}" class="btn-link">Resume timed test — the clock is running</a>
+            {% else %}
               <form method="post" action="/tests/start"
-                    onsubmit="return confirm('Start now? The {{ t.minutes }}-minute timer begins immediately and cannot be paused.');">
+                    class="full-test-settings"
+                    onsubmit="return confirm('Start now? Your timer begins immediately and cannot be paused.');">
                 <input type="hidden" name="mode" value="full">
                 <input type="hidden" name="paper_id" value="{{ t.paper.id }}">
-                <button type="submit">Start test</button>
+                <div class="options-grid">
+                  <div>
+                    <label for="full-minutes-{{ t.paper.id }}">Time limit (minutes)</label>
+                    <input id="full-minutes-{{ t.paper.id }}" type="number" name="duration_minutes" min="1" max="600" value="{{ t.minutes }}" required>
+                  </div>
+                  <div>
+                    <label for="full-marks-{{ t.paper.id }}">Marks per question</label>
+                    <input id="full-marks-{{ t.paper.id }}" type="number" name="marks_per_question" min="0.01" step="any" value="{{ t.marks_default }}" required>
+                  </div>
+                  <div>
+                    <label for="full-negative-{{ t.paper.id }}">Penalty fraction for a wrong answer</label>
+                    <input id="full-negative-{{ t.paper.id }}" type="text" name="negative_fraction" value="{{ t.negative_default }}" required>
+                  </div>
+                </div>
+                {% if t.scheme_ready %}
+                  <p class="paper-meta">Enter 0 for no negative marking. Only a sitting using this paper's standard settings can count for ranking; custom settings are practice-only.</p>
+                {% else %}
+                  <p class="paper-meta">Enter 0 for no negative marking. This paper has no standard scoring scheme, so this timed sitting won't be ranked.</p>
+                {% endif %}
+                <button type="submit">Start timed test</button>
               </form>
-              {% if t.taken %}
-                <span class="paper-meta">You've taken this {{ t.taken }} time{{ "s" if t.taken != 1 else "" }}. Only your first attempt counts for ranking.</span>
-              {% else %}
-                <span class="paper-meta">Your first attempt is the one that counts for ranking.</span>
-              {% endif %}
-            {% else %}
-              <span class="paper-meta">Not available as a timed test yet — the marking scheme hasn't been set. You can still practise its questions.</span>
             {% endif %}
+            {% if t.practice_open_id %}
+              <a href="/attempts/{{ t.practice_open_id }}" class="btn-link secondary-link">Resume full-paper practice</a>
+            {% else %}
+              <form method="post" action="/tests/start">
+                <input type="hidden" name="mode" value="full_practice">
+                <input type="hidden" name="paper_id" value="{{ t.paper.id }}">
+                <button type="submit" class="secondary">Practice this paper</button>
+              </form>
+            {% endif %}
+            {% if t.taken %}<span class="paper-meta">Ranked standard-settings attempts: {{ t.taken }}.</span>{% endif %}
           </div>
         </li>
       {% endfor %}

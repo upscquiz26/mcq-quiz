@@ -134,6 +134,7 @@ def save_question(
     option_b: str = Form(""),
     option_c: str = Form(""),
     option_d: str = Form(""),
+    option_e: str = Form(""),
     correct_answer: str = Form(""),
     subject_id: str = Form(""),
     topic_name: str = Form(""),
@@ -154,8 +155,8 @@ def save_question(
         raise HTTPException(status_code=400, detail="This question is in quarantine — restore it first")
 
     answer = correct_answer.strip().upper()
-    if answer not in ("A", "B", "C", "D"):
-        raise HTTPException(status_code=400, detail="Correct answer must be A, B, C or D")
+    if answer not in pool.ANSWER_LETTERS or (answer == "E" and not option_e.strip()):
+        raise HTTPException(status_code=400, detail="Correct answer must match an available option A–E")
     try:
         subject_id_value = to_int(subject_id)
     except ValueError:
@@ -181,6 +182,7 @@ def save_question(
 
     new_values = {
         "text": text, "option_a": option_a, "option_b": option_b, "option_c": option_c, "option_d": option_d,
+        "option_e": option_e.strip() or None,
         "correct_answer": answer, "subject_id": subject_id_value, "topic_id": topic_id_value,
         "difficulty": difficulty or None, "has_image": has_image,
     }
@@ -562,6 +564,7 @@ def add_question(
     option_b: str = Form(""),
     option_c: str = Form(""),
     option_d: str = Form(""),
+    option_e: str = Form(""),
     correct_answer: str = Form(""),
     explanation: str = Form(""),
     db: Session = Depends(get_db),
@@ -571,8 +574,8 @@ def add_question(
     if paper.status == "processing":
         flash(request, "This paper is still being read — wait for it to finish, then add questions.")
         return RedirectResponse(url=f"/review/{paper_id}", status_code=303)
-    text, option_a, option_b, option_c, option_d = (text.strip(), option_a.strip(), option_b.strip(),
-                                                     option_c.strip(), option_d.strip())
+    text, option_a, option_b, option_c, option_d, option_e = (text.strip(), option_a.strip(), option_b.strip(),
+                                                               option_c.strip(), option_d.strip(), option_e.strip())
     if not text or not all((option_a, option_b, option_c, option_d)):
         flash(request, "A new question needs its text and all four options.")
         return RedirectResponse(url=f"/review/{paper_id}#add-question", status_code=303)
@@ -593,13 +596,13 @@ def add_question(
     else:
         number = (max(existing) + 1) if existing else 1
     answer = correct_answer.strip().upper()
-    if answer and answer not in ("A", "B", "C", "D"):
-        flash(request, "Correct answer must be A, B, C or D, or left blank.")
+    if answer and (answer not in pool.ANSWER_LETTERS or (answer == "E" and not option_e)):
+        flash(request, "Correct answer must match an available option A–E, or be left blank.")
         return RedirectResponse(url=f"/review/{paper_id}#add-question", status_code=303)
     explanation = explanation.strip() or None
     q = models.Question(
         paper_id=paper_id, question_number=number, text=text,
-        option_a=option_a, option_b=option_b, option_c=option_c, option_d=option_d,
+        option_a=option_a, option_b=option_b, option_c=option_c, option_d=option_d, option_e=option_e or None,
         correct_answer=answer or None, explanation=explanation,
         explanation_status="unverified" if explanation else None,
         status=QStatus.NEEDS_REVIEW, source="manual", answer_source="manual" if answer else None,

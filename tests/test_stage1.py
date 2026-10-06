@@ -21,6 +21,16 @@ def get_q(db, paper, number):
     return db.query(models.Question).filter_by(paper_id=paper.id, question_number=number).one()
 
 
+@pytest.fixture
+def needs_tesseract():
+    """A blank (image-only) PDF is read by OCR, so uploading one needs Tesseract on this machine."""
+    from app import ocr_extract
+    try:
+        ocr_extract.tesseract_cmd()
+    except ocr_extract.OcrUnavailable:
+        pytest.skip("Tesseract isn't installed")
+
+
 def pdf_files(pdf):
     return {"pdf_file": ("paper.pdf", pdf, "application/pdf")}
 
@@ -86,7 +96,7 @@ def test_non_admins_are_blocked_from_admin_pages(make_user, method, path):
 
 # --------------------------------------------------------------------------- upload: source fields, backup, duplicates
 
-def test_upload_records_source_fields_backs_up_and_audits(admin, db):
+def test_upload_records_source_fields_backs_up_and_audits(admin, db, needs_tesseract):
     r = admin.post("/upload", data={
         "title": "Stage1 upload paper", "exam_type": "full_length", "source_type": "official_pyq",
         "source_name": "UPSC", "test_name": "Prelims", "test_number": "1", "series": "a",
@@ -111,7 +121,7 @@ def test_upload_records_source_fields_backs_up_and_audits(admin, db):
     assert "paper.import_done" in actions(db)
 
 
-def test_duplicate_file_and_duplicate_test_are_blocked_unless_allowed(admin):
+def test_duplicate_file_and_duplicate_test_are_blocked_unless_allowed(admin, needs_tesseract):
     data = {"title": "Dup A", "exam_type": "full_length", "source_name": "InstituteX",
             "test_name": "Series", "test_number": "7"}
     first = blank_pdf_bytes(pages=3)

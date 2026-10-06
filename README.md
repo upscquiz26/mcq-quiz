@@ -102,18 +102,20 @@ explanation shown straight after each answer.
   later — *Pick up where you left off* (Practice page) and *Continue where you left off* (home) take you to
   the first unanswered question, from any device.
 - **Never overwritten:** practising again starts a new attempt; earlier ones stay as they were.
-- **Marks:** each answer is scored with its paper's marking scheme (a paper with no scheme uses 2 marks
-  and ⅓ negative). Time per question is measured on the server, not the browser.
+- **Marks:** timed full-paper tests copy the student's selected marks and penalty onto each answer. The paper's
+  saved scheme is suggested by default; otherwise the form starts at 2 marks and ⅓ negative. Full-paper practice
+  has no timer or negative penalty. Time per question is measured on the server, not the browser.
 - **If a paper is unpublished mid-session,** its questions show "no longer available" straight away.
 - **Explanations** are labelled *Verified* only if the admin ticked "I have checked this explanation" on the
   review page; otherwise *Unverified (as printed in the answer PDF)*.
 
 ## Timed tests (students)
 
-**Tests** in the top bar. Three kinds:
+**Tests** in the top bar. Four choices:
 
-- **Full-length:** a whole paper in its own order, timed with the paper's real marking scheme. The paper
-  needs its marks per question *and* negative marking set, otherwise the button doesn't appear.
+- **Full-length:** a whole paper in its own order. Choose the time limit, marks per question and wrong-answer
+  penalty when you start; saved paper settings are defaults, and missing settings use 2 marks and ⅓ negative.
+- **Full-paper practice:** the whole paper in order, untimed, with immediate feedback and no negative penalty.
 - **Sectional:** one paper's whole subject section (e.g. "Test-1 · History"), 72 seconds per question.
 - **Custom timed test:** a random selection on one subject with your filters. Practice only, never ranked.
 
@@ -131,15 +133,17 @@ explanation shown straight after each answer.
 - **Marking:** right answers earn the marks; wrong answers lose the negative fraction of them (2 marks and ⅓ →
   −0.67); skipped questions are never penalised. Each answer is marked with the marks the test *started* with, so
   editing a paper afterwards never changes a past result.
-- **Ranking rules (used by the leaderboard stage):** only whole-paper and whole-paper-subject sittings get a rank
-  key, and a user's *first started* attempt at that exact question set is the one that can count — even if it ran
-  out of time. Starting the same ranked test while one is open resumes it.
+- **Ranking rules (used by the leaderboard stage):** only standard-settings whole-paper and whole-paper-subject
+  sittings get a rank key, and a user's *first started* attempt at that exact question set is the one that can count —
+  even if it ran out of time. Student-customized time or scoring settings are scored but not ranked. Starting the same
+  timed test while one is open resumes it.
 - **Confidence** is optional in a test: an answer saved without one still counts and is just left out of the
   confidence analysis.
 
-**Admin:** on a paper's review page, **Marking scheme and time** sets expected questions, marks per question,
-negative marking (`1/3` or `0.3333`) and the time allowed for a full-length test. Leave the time blank and a
-full-length test gets 72 seconds per question. Changing these affects only tests started afterwards.
+**Admin:** on a paper's review page, **Marking scheme and time** can set expected questions and the paper's standard
+marks, negative marking (`1/3` or `0.3333`) and suggested time. Students choose time and scoring for each full-length
+sitting; missing paper settings do not block timed tests. Only settings matching the saved paper standard can rank.
+Leave suggested time blank and the default is about 72 seconds per question. Changes affect only tests started afterwards.
 
 ## Results (students)
 

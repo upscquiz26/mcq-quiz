@@ -1,5 +1,6 @@
 """Small pieces every route module shares: templates, the admin check, flash messages."""
 import logging
+import json
 import os
 
 from fastapi import HTTPException, Request
@@ -35,6 +36,17 @@ templates.env.globals["user_language"] = lambda request: language.pref_of(getatt
 templates.env.globals["lang_labels"] = language.PREF_LABELS
 templates.env.globals["expl_label_hi"] = language.explanation_label_hi
 templates.env.globals["primary"] = language.primary       # (language, question text, four options): English if the question has it, else Hindi
+templates.env.globals["option_rows"] = language.option_rows
+
+
+def book_source_ref(question):
+    try:
+        return json.loads(question.source_ref) if question.source_ref else None
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+
+templates.env.globals["book_source_ref"] = book_source_ref
 templates.env.filters["marks"] = format_marks
 
 
@@ -66,6 +78,7 @@ def build_nav(request: Request) -> list[dict]:
                 _item("Papers", "/", "file", "/review", "/papers", exact=False),
                 _item("Upload paper", "/upload", "upload"),
                 _item("Import JSON", "/admin/import/json", "braces"),
+                _item("Import book JSON", "/admin/books/import/json", "book"),
                 _item("Import a file", "/admin/import/file", "upload"),
                 _item("Duplicates", "/admin/duplicates", "list"),
                 _item("Quarantine", "/quarantine", "archive"),

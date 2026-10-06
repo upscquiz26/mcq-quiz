@@ -32,7 +32,7 @@ MIN_RESPONDERS = 12
 HIGH_SHARE = 0.25
 MIN_HIGH = 5
 MARGIN = 2
-LETTERS = ("A", "B", "C", "D")
+LETTERS = ("A", "B", "C", "D", "E")
 
 
 def first_answers(db) -> dict[int, dict[int, str]]:

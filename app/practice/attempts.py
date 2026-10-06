@@ -152,7 +152,7 @@ def response_at(attempt: models.Attempt, position: int) -> models.Response:
 # --------------------------------------------------------------------------- starting
 
 def _new_attempt(db, user, *, kind, ordered_ids, filters=None, paper=None, subject_id=None,
-                 duration_seconds=None, rank_key=None) -> tuple[models.Attempt, bool]:
+                 duration_seconds=None, rank_key=None, marking_scheme=None) -> tuple[models.Attempt, bool]:
     """Creates an attempt over `ordered_ids` (in that order). Returns (attempt, resumed) — resumed is True
     when the user already had this ranked test open, and that one is returned instead of a duplicate."""
     # A test whose clock has run out is only finished when somebody next looks at it. Do that first, so an
@@ -183,6 +183,7 @@ def _new_attempt(db, user, *, kind, ordered_ids, filters=None, paper=None, subje
         total_questions=len(ordered_ids), rank_key=rank_key, counts_for_rank=counts,
         mode=models.ExamType.full_length if kind == AttemptKind.FULL else models.ExamType.sectional if kind == AttemptKind.SECTIONAL else None,
         timer_strict=kind == AttemptKind.FULL,
+        negative_marking=marking_scheme[1] > 0 if marking_scheme is not None else True,
     )
     if duration_seconds:
         attempt.time_limit_minutes = math.ceil(duration_seconds / 60)
@@ -190,7 +191,7 @@ def _new_attempt(db, user, *, kind, ordered_ids, filters=None, paper=None, subje
     db.add(attempt)
     db.flush()
     for position, question_id in enumerate(ordered_ids, start=1):
-        marks, negative = scheme_for(questions[question_id].paper)
+        marks, negative = marking_scheme or scheme_for(questions[question_id].paper)
         db.add(models.Response(
             attempt_id=attempt.id, question_id=question_id, position=position,
             marks_if_correct=marks, penalty_if_wrong=marks * negative,
@@ -203,7 +204,8 @@ def _new_attempt(db, user, *, kind, ordered_ids, filters=None, paper=None, subje
 def create_practice_attempt(db, user, filters: pool.Filters, count: int) -> models.Attempt | None:
     """Starts an untimed topic-practice attempt with a random selection of matching questions.
     Returns None if nothing matches the filters."""
-    ids = [row[0] for row in pool.filtered_questions(db, user.id, filters).with_entities(models.Question.id).all()]
+    ids = [row[0] for row in pool.filtered_questions(db, user.id, filters)
+           .with_entities(models.Question.id).all()]
     if not ids:
         return None
     count = max(1, min(count, MAX_SESSION_QUESTIONS, len(ids)))
@@ -255,22 +257,69 @@ def paper_live_ids(db, paper_id: int, subject_id: int | None = None) -> list[int
     return [r[0] for r in rows]
 
 
+def full_test_duration_minutes(paper: models.Paper, question_count: int) -> int:
+    if paper.duration_minutes:
+        return paper.duration_minutes
+    return max(1, math.ceil(question_count * SECONDS_PER_QUESTION / 60))
+
+
 def full_test_duration_seconds(paper: models.Paper, question_count: int) -> int:
-    return paper.duration_minutes * 60 if paper.duration_minutes else question_count * SECONDS_PER_QUESTION
+    return full_test_duration_minutes(paper, question_count) * 60
 
 
-def start_full_test(db, user, paper_id: int) -> tuple[models.Attempt, bool]:
-    """A timed sitting of a whole paper, in the paper's own order, with the paper's own marking scheme."""
+def start_full_test(db, user, paper_id: int, *, duration_minutes: int | None = None,
+                    marks_per_question: float | None = None, negative_fraction: float | None = None) -> tuple[models.Attempt, bool]:
+    """A timed whole-paper sitting with student-selected settings; only the paper's standard settings rank."""
     paper = db.get(models.Paper, paper_id)
     ids = paper_live_ids(db, paper_id) if paper else []
     if not ids:
         raise StartRefused("That test isn't available.")
-    if not paper.marks_per_question or paper.negative_fraction is None:
-        raise StartRefused("The admin hasn't set this paper's marking scheme yet, so it can't be taken as a "
-                           "full-length test. You can still practise its questions.")
+    expire_overdue(db, user.id)
+    open_one = (db.query(models.Attempt)
+                .filter_by(user_id=user.id, paper_id=paper.id, kind=AttemptKind.FULL,
+                           status=AttemptStatus.IN_PROGRESS)
+                .order_by(models.Attempt.id.desc()).first())
+    if open_one is not None:
+        return open_one, True
+
+    if duration_minutes is not None and not 1 <= duration_minutes <= 600:
+        raise StartRefused("Choose a time limit from 1 to 600 minutes.")
+    paper_marks, paper_negative = scheme_for(paper)
+    marks = paper_marks if marks_per_question is None else marks_per_question
+    negative = paper_negative if negative_fraction is None else negative_fraction
+    if not math.isfinite(marks) or marks <= 0:
+        raise StartRefused("Marks per question must be a positive number.")
+    if not math.isfinite(negative) or not 0 <= negative <= 1:
+        raise StartRefused("Negative marking must be between 0 and 1 (for example, 1/3).")
+    duration_seconds = (full_test_duration_seconds(paper, len(ids)) if duration_minutes is None
+                        else duration_minutes * 60)
+    standard = (
+        paper.marks_per_question is not None
+        and paper.negative_fraction is not None
+        and marks == paper.marks_per_question
+        and negative == paper.negative_fraction
+        and duration_seconds == full_test_duration_seconds(paper, len(ids))
+    )
     return _new_attempt(db, user, kind=AttemptKind.FULL, ordered_ids=ids, paper=paper,
-                        duration_seconds=full_test_duration_seconds(paper, len(ids)),
-                        rank_key=f"paper:{paper.id}:full:{question_set_fingerprint(ids)}")
+                        duration_seconds=duration_seconds,
+                        rank_key=f"paper:{paper.id}:full:{question_set_fingerprint(ids)}" if standard else None,
+                        marking_scheme=(marks, negative))
+
+
+def start_full_paper_practice(db, user, paper_id: int) -> tuple[models.Attempt, bool]:
+    """An untimed, immediate-feedback full-paper practice with no negative penalty."""
+    paper = db.get(models.Paper, paper_id)
+    ids = paper_live_ids(db, paper_id) if paper else []
+    if not ids:
+        raise StartRefused("That paper isn't available.")
+    open_one = (db.query(models.Attempt)
+                .filter_by(user_id=user.id, paper_id=paper.id, kind=AttemptKind.PAPER_PRACTICE,
+                           status=AttemptStatus.IN_PROGRESS)
+                .order_by(models.Attempt.id.desc()).first())
+    if open_one is not None:
+        return open_one, True
+    return _new_attempt(db, user, kind=AttemptKind.PAPER_PRACTICE, ordered_ids=ids, paper=paper,
+                        marking_scheme=(1.0, 0.0))
 
 
 def start_section_test(db, user, paper_id: int, subject_id: int) -> tuple[models.Attempt, bool]:
@@ -289,7 +338,9 @@ def start_custom_test(db, user, filters: pool.Filters, count: int) -> tuple[mode
     comparing the same questions)."""
     if filters.subject_id is None:
         raise StartRefused("Choose a subject for a sectional test.")
-    ids = [row[0] for row in pool.filtered_questions(db, user.id, filters).with_entities(models.Question.id).all()]
+    ids = [row[0] for row in pool.filtered_questions(db, user.id, filters)
+           .filter(models.Paper.source_type != models.SourceType.BOOK)
+           .with_entities(models.Question.id).all()]
     if not ids:
         raise StartRefused("No questions match those choices. Try loosening a filter.")
     count = max(1, min(count, MAX_SESSION_QUESTIONS, len(ids)))
@@ -333,6 +384,12 @@ def _validated(answer: str | None, confidence: str | None) -> tuple[str | None, 
     return letter, confidence
 
 
+def _check_offered(db, response: models.Response, letter: str | None) -> None:
+    """E is only an answer on questions that have a fifth option (book questions)."""
+    if letter == "E" and not (db.get(models.Question, response.question_id).option_e or "").strip():
+        raise AnswerRejected("Choose one of the options.")
+
+
 def submit_answer(db, attempt: models.Attempt, response: models.Response, answer: str, confidence: str):
     """Topic practice: grades one answer straight away and locks it."""
     if is_timed(attempt):
@@ -346,6 +403,7 @@ def submit_answer(db, attempt: models.Attempt, response: models.Response, answer
         raise AnswerRejected("Choose one of the options.")
     if conf is None:
         raise AnswerRejected("Say how sure you are: sure, guessed or no idea.")
+    _check_offered(db, response, letter)
     if not pool.can_view_question(db, response.question_id):
         raise AnswerRejected("This question is no longer available.")
 
@@ -372,6 +430,7 @@ def save_test_answer(db, attempt: models.Attempt, response: models.Response, *, 
     if attempt.status != AttemptStatus.IN_PROGRESS:
         raise AnswerRejected("This test has finished.")
     letter, conf = _validated(answer, confidence)
+    _check_offered(db, response, letter)
     if clear:
         letter = conf = None       # "Clear response" wins over whatever options are still ticked in the form
     if (letter or conf or clear) and not pool.can_view_question(db, response.question_id):

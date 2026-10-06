@@ -1,7 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Revision{% endblock %}
 {% block content %}
-  <h1>Revision</h1>
+  <div class="page-head">
+    <div>
+      <h1>Fix your mistakes</h1>
+      <p class="page-sub">Questions you got wrong or guessed, brought back for another try.</p>
+    </div>
+  </div>
 
   {% if flash %}
     <div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>
@@ -9,69 +14,88 @@
 
   {% if not has_any %}
     <div class="empty-state">
-      Nothing here yet. Any question you get wrong — or get right but guess — is collected in this notebook, and
-      wrong ones come back on a schedule (after 1, 3, 7 and then 15 days) until you get them right twice in a row.<br>
+      Nothing here yet. Questions you get wrong or answer by guessing will appear here for spaced revision. Wrong answers come back
+      after 1, 3, 7 and then 15 days until you get them right twice in a row.<br>
       <a href="/practice" class="btn-link">Start practising</a>
     </div>
   {% else %}
-    <div class="dash-grid">
-      <section class="dash-card">
-        <h2>Due now</h2>
-        <p><strong class="big-num">{{ due_now }}</strong> question{{ "s" if due_now != 1 else "" }} due for revision</p>
-        {% if due_now %}
-          <form method="post" action="/revision/start" class="inline-form">
-            <input type="hidden" name="mode" value="due">
-            <select name="count" aria-label="How many">
-              {% for n in count_choices %}<option value="{{ n }}" {% if n == 10 %}selected{% endif %}>{{ n }}</option>{% endfor %}
-            </select>
-            <button type="submit" class="big">Revise what's due</button>
-          </form>
-          <p class="paper-meta">Most overdue first. Missed days just roll over — nothing is lost.</p>
-        {% else %}
-          <p class="paper-meta">Nothing is due today. Well done.</p>
-        {% endif %}
-      </section>
+    <section class="dash-card hero span-3">
+      <div class="card-title">
+        <span class="icon-badge red"><span class="icon i-flag" aria-hidden="true"></span></span>
+        <h2>{{ due_now }} due right now</h2>
+      </div>
+      {% if due_reason_choices %}
+        <p class="paper-meta">
+          {% for name, label, count in due_reason_choices %}
+            <a href="/revision?state=due&reason={{ name }}" class="chip state-due">{{ label }} ({{ count }})</a>
+          {% endfor %}
+        </p>
+      {% endif %}
+      <form method="post" action="/revision/start">
+        <input type="hidden" name="mode" value="due">
+        <button type="submit" {{ "disabled" if due_now == 0 else "" }}>
+          {{ "Start revision" if due_now else "Nothing due right now" }}
+        </button>
+      </form>
+      {% if due_now %}<p class="paper-meta">Most overdue first. Missed days roll over; nothing is lost.</p>{% endif %}
+    </section>
 
-      <section class="dash-card">
-        <h2>Practise my mistakes</h2>
-        <form method="post" action="/revision/start" class="practice-form">
-          <input type="hidden" name="mode" value="all">
-          <div class="row wrap">
+    <details class="dash-card">
+      <summary><strong>Practise a specific area instead</strong></summary>
+      <form method="post" action="/revision/start" class="revision-build-form">
+        <input type="hidden" name="mode" value="all">
+        <div class="options-grid">
+          <div>
+            <label for="p_subject">Subject</label>
+            <select id="p_subject" name="subject_id">
+              <option value="">Any subject</option>
+              {% for id, name in subject_choices %}
+                <option value="{{ id }}" {{ "selected" if selected.subject_id == id else "" }}>{{ name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label for="p_topic">Topic</label>
+            <select id="p_topic" name="topic_id">
+              <option value="">Any topic</option>
+              {% for id, name in topic_choices %}
+                <option value="{{ id }}" {{ "selected" if selected.topic_id == id else "" }}>{{ name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% if reason_choices %}
             <div>
-              <label for="p_subject">Subject</label>
-              <select id="p_subject" name="subject_id"><option value="">Any</option>
-                {% for id, name in subject_choices %}<option value="{{ id }}">{{ name }}</option>{% endfor %}</select>
-            </div>
-            <div>
-              <label for="p_topic">Topic</label>
-              <select id="p_topic" name="topic_id"><option value="">Any</option>
-                {% for id, name in topic_choices %}<option value="{{ id }}">{{ name }}</option>{% endfor %}</select>
-            </div>
-            <div>
-              <label for="p_reason">Why I got it wrong</label>
-              <select id="p_reason" name="reason"><option value="">Any</option>
-                {% for value, label in reason_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
-            </div>
-            <div>
-              <label for="p_count">Questions</label>
-              <select id="p_count" name="count">
-                {% for n in count_choices %}<option value="{{ n }}" {% if n == 10 %}selected{% endif %}>{{ n }}</option>{% endfor %}
+              <label for="p_reason">Mistake type</label>
+              <select id="p_reason" name="reason">
+                <option value="">Any type</option>
+                {% for name, label in reason_choices %}
+                  <option value="{{ name }}" {{ "selected" if selected.reason == name else "" }}>{{ label }}</option>
+                {% endfor %}
               </select>
             </div>
+          {% endif %}
+          <div>
+            <label for="p_count">How many</label>
+            <select id="p_count" name="count">
+              {% for count in count_choices %}
+                <option value="{{ count }}" {{ "selected" if count == 10 else "" }}>{{ count }}</option>
+              {% endfor %}
+            </select>
           </div>
-          <label class="check-line"><input type="checkbox" name="include_mastered" value="1"> Include ones I've mastered</label>
-          <button type="submit" class="secondary">Start mistake practice</button>
-        </form>
-      </section>
-    </div>
+        </div>
+        <label class="check-line"><input type="checkbox" name="include_mastered" value="1"> Include ones I've already cleared</label>
+        <button type="submit" class="secondary">Start this set</button>
+      </form>
+    </details>
 
-    <h2>My mistake notebook</h2>
-    <p class="filter-row">
+    <section class="dash-card">
+      <div class="card-title"><h2>Your mistake notebook</h2></div>
+      <p class="paper-meta">
       {% for key, label in state_filters.items() %}
         <a href="?state={{ key }}{% if selected.subject_id %}&subject_id={{ selected.subject_id }}{% endif %}{% if selected.topic_id %}&topic_id={{ selected.topic_id }}{% endif %}{% if selected.reason %}&reason={{ selected.reason }}{% endif %}"
-           class="{{ 'on' if selected.state == key }}">{{ label }} ({{ state_counts[key] }})</a>{{ " · " if not loop.last }}
+           class="chip {{ 'state-scheduled' if selected.state == key else '' }}">{{ label }} ({{ state_counts[key] }})</a>
       {% endfor %}
-    </p>
+      </p>
 
     <form method="get" action="/revision" class="toolbar notebook-filters">
       <input type="hidden" name="state" value="{{ selected.state }}">
@@ -112,6 +136,7 @@
     {% if total_shown > row_limit %}
       <p class="paper-meta">Showing the first {{ row_limit }} of {{ total_shown }}. Use the filters to narrow it down.</p>
     {% endif %}
+    </section>
     <p class="paper-meta">
       <a href="/bookmarks">★ My bookmarks</a> · Wrong questions come back after {{ ladder[0] }}, {{ ladder[1] }}, {{ ladder[2] }} and then
       {{ ladder[3] }} days, and leave the schedule after you get them right twice in a row.

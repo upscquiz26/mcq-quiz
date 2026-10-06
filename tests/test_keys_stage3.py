@@ -43,10 +43,10 @@ def test_the_common_ways_of_writing_a_key_are_all_read(text, expected):
     assert dict(sorted(result.answers.items())) == expected and result.ok and not result.errors
 
 
-def test_only_letters_a_to_d_are_answers_and_digits_are_refused():
+def test_only_letters_a_to_e_are_answers_and_digits_are_refused():
     r = kp.parse_key_text("1-3 2-1 3-4 4-2")
     assert not r.ok and r.answers == {} and "uses numbers (1–4)" in r.errors[0].message
-    assert answers("1-e 2-f 3-b") == {3: "B"}                                   # e and f aren't answers
+    assert answers("1-e 2-f 3-b") == {1: "E", 3: "B"}                           # e is (books have five options); f isn't
     assert answers("1-b 2-z 3-c") == {1: "B", 3: "C"}
 
 

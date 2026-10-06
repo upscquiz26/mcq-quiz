@@ -13,7 +13,18 @@ MIN_LETTERS = 4                                          # fewer letters than th
 HINDI_MIN_SHARE = 0.6                                    # Hindi fields: at least this share of their letters must be Devanagari
 ENGLISH_MAX_SHARE = 0.2                                  # English fields: at most this share
 
-LETTERS = ("a", "b", "c", "d")
+LETTERS = ("a", "b", "c", "d", "e")
+
+
+def option_rows(q) -> list[tuple[str, str, str | None]]:
+    """Present non-empty English/Hindi options in letter order, including E for book questions."""
+    rows = []
+    for letter in LETTERS:
+        text = (getattr(q, f"option_{letter}", None) or "").strip()
+        text_hi = (getattr(q, f"option_{letter}_hi", None) or "").strip() or None
+        if text or text_hi:
+            rows.append((letter.upper(), text, text_hi))
+    return rows
 
 
 def devanagari_share(text: str) -> float | None:
@@ -25,11 +36,14 @@ def devanagari_share(text: str) -> float | None:
 
 
 def english_options(q) -> list[str]:
-    return [(getattr(q, f"option_{k}") or "") for k in LETTERS]
+    options = [(getattr(q, f"option_{letter}") or "") for letter in LETTERS[:4]]
+    if (getattr(q, "option_e", None) or "").strip():
+        options.append(q.option_e)
+    return options
 
 
 def hindi_options(q) -> list[str]:
-    return [(getattr(q, f"option_{k}_hi") or "") for k in LETTERS]
+    return [(getattr(q, f"option_{k}_hi") or "") for k in LETTERS[:4]]
 
 
 def has_english(q) -> bool:

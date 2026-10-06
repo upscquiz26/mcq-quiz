@@ -16,6 +16,7 @@ PDF_DIR = os.path.join(DATA_DIR, "pdfs")
 IMAGES_DIR = os.path.join(DATA_DIR, "images")
 
 FLAG_LABELS = {
+    "book_source_flag": "The book extractor flagged this question — check its source reference",
     "options_not_found": "Couldn't find options (a)–(d) — fix the text using the snapshot",
     "empty_stem": "Question text is empty",
     "empty_option": "An option is empty",
@@ -25,7 +26,7 @@ FLAG_LABELS = {
     "no_answer_in_key": "This number isn't in the answer key",
     "hindi_text": "Contains Hindi text — this app reads English only",
     "check_table": "Lists or a table — the reading order may be scrambled; check against the snapshot",
-    "no_answer_found": "No answer was printed under this question — set it before publishing",
+    "no_answer_found": "No answer supplied or found — review and set an answer before publishing",
     "answer_unclear": "The printed answer can't be read (text printed over text) — check the snapshot and set it",
     "maybe_merged": "This looks like two questions merged into one — split it using the snapshot",
     "answer_conflict": "The answer printed in the paper differs from the answer key — check both",

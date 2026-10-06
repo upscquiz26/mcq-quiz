@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Book JSON validation{% endblock %}
+{% block content %}
+  <p class="crumbs"><a href="/admin/books/import/json">← Start book import again</a></p>
+  <div class="page-head"><div>
+    <h1>Book JSON validation</h1>
+    <p class="page-sub">{{ payload.title }} · {{ payload.subject }} · {{ report.chapters|length }} chapters · {{ report.questions|length }} valid questions</p>
+  </div></div>
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  {% if report.errors %}
+    <div class="error"><strong>{{ report.errors|length }} error{{ "s" if report.errors|length != 1 else "" }}.</strong> Nothing has been imported.</div>
+    <ul class="warnings">
+      {% for issue in report.errors %}
+        <li>{% if issue.file %}<strong>{{ issue.file }}</strong>{% endif %}{% if issue.chapter %} · {{ issue.chapter }}{% endif %}{% if issue.number %} · Q{{ issue.number }}{% endif %}: {{ issue.message }}</li>
+      {% endfor %}
+    </ul>
+  {% elif report.questions %}
+    <div class="notice"><strong>Validation passed.</strong> {{ report.questions|length }} questions across {{ report.chapters|length }} chapters are ready to import as draft questions.</div>
+  {% else %}
+    <div class="error">No questions found.</div>
+  {% endif %}
+
+  {% if report.warnings %}
+    <h2>{{ report.warnings|length }} warnings</h2>
+    <p class="paper-meta">Warnings do not discard the question. Any missing answer or source warning remains visible during review.</p>
+    <ul class="warnings">
+      {% for issue in report.warnings %}
+        <li>{% if issue.file %}<strong>{{ issue.file }}</strong>{% endif %}{% if issue.chapter %} · {{ issue.chapter }}{% endif %}{% if issue.number %} · Q{{ issue.number }}{% endif %}: {{ issue.message }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <h2>Chapters</h2>
+  <div class="table-wrap"><table class="user-table">
+    <tr><th>Chapter</th><th>Title</th><th>File</th><th>Questions</th></tr>
+    {% for chapter in report.chapters %}
+      <tr><td>{{ chapter.number }}</td><td>{{ chapter.name }}</td><td>{{ chapter.filename }}</td><td>{{ chapter.questions }}</td></tr>
+    {% endfor %}
+  </table></div>
+
+  {% if report.questions %}
+    <h2>Question sample</h2>
+    <div class="table-wrap"><table class="user-table">
+      <tr><th>Book Q</th><th>Chapter</th><th>Printed Q</th><th>Question</th><th>Choices</th><th>Answer</th></tr>
+      {% for q in report.questions[:20] %}
+        <tr>
+          <td>{{ q.number }}</td><td>{{ q.chapter }}</td><td>{{ q.chapter_number }}</td>
+          <td>{{ q.text|truncate(120) }}</td><td>{{ q.options|length }}</td><td>{{ q.answer or "Needs review" }}</td>
+        </tr>
+      {% endfor %}
+    </table></div>
+    {% if report.questions|length > 20 %}<p class="paper-meta">Showing 20 of {{ report.questions|length }} questions.</p>{% endif %}
+  {% endif %}
+
+  {% if report.ok %}
+    <form method="post" action="/admin/books/import/json/apply" class="form-card"
+          onsubmit="return confirm('Import {{ report.questions|length }} draft questions across {{ report.chapters|length }} chapters? Students will not see them until reviewed and published.');">
+      <input type="hidden" name="token" value="{{ token }}">
+      <button type="submit">Import as draft book</button>
+    </form>
+  {% endif %}
+{% endblock %}

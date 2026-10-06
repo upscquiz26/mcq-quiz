@@ -249,7 +249,8 @@ def test_the_audit_page_shows_picked_questions_with_both_buttons(admin, db, make
     page = admin.get(f"/review/{paper.id}/audit").text
     assert page.count("Matches the original") >= 5 and page.count("Doesn&#39;t match") + page.count("Doesn't match") >= 5
     assert f"Q{picked[0].question_number}" in page
-    verdict(admin, paper, picked[0], "ok")
+    response = verdict(admin, paper, picked[0], "ok")
+    assert response.headers["location"] == f"/review/{paper.id}/audit#q{picked[0].question_number}"
     assert "Matches the original</span>" in admin.get(f"/review/{paper.id}/audit").text
 
 

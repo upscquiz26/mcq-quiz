@@ -119,8 +119,7 @@ def show_question(request: Request, attempt_id: int, position: int, db: Session 
         "show_toggle": has_hindi or pref != "en",            # the quick language switch, when anything in this session has Hindi
         "request": request, "attempt": attempt, "response": response, "question": question,
         "available": available, "finished": finished, "position": position, "total": total,
-        "options": [("A", question.option_a), ("B", question.option_b),
-                    ("C", question.option_c), ("D", question.option_d)],
+        "options": [(letter, text) for letter, text, _ in language.option_rows(question)],
         "palette": engine.palette(attempt),
         "prev_pos": position - 1 if position > 1 else None,
         "next_pos": position + 1 if position < total else None,
@@ -157,7 +156,7 @@ def show_question(request: Request, attempt_id: int, position: int, db: Session 
         "reason_label": grading.REASON_LABELS.get(response.mistake_reason, ""),
         "reason_help": grading.REASON_HELP.get(response.mistake_reason, ""),
         "reason_choices": [(r.name, grading.REASON_LABELS[r]) for r in grading.EDITABLE_REASONS],
-        "show_marks": attempt.kind != AttemptKind.TOPIC,
+        "show_marks": attempt.kind not in (AttemptKind.TOPIC, AttemptKind.PAPER_PRACTICE),
     })
     return templates.TemplateResponse("attempt_question.html", context)
 

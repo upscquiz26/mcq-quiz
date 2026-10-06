@@ -59,7 +59,9 @@ def _meta(token: str) -> dict:
 # --------------------------------------------------------------------------- what the validator needs from the database
 
 def _subject_names(db: Session) -> list[str]:
-    return [s.name for s in db.query(models.Subject).order_by(models.Subject.id).all()]
+    # Only the fixed list: a book import may add its own subject (e.g. "Physics"), which isn't a label for papers.
+    return [s.name for s in db.query(models.Subject).order_by(models.Subject.id).all()
+            if s.name in models.STANDARD_SUBJECTS]
 
 
 def _topics(db: Session) -> dict[str, set[str]]:
@@ -170,7 +172,7 @@ def _report_page(request: Request, db: Session, token: str, paper: models.Paper 
         "json_report.html",
         {"request": request, "token": token, "paper": paper, "report": report, "later_wins": later_wins, "form": defaults,
          "meta": meta, "rows": rows, "hidden_rows": 0, "error": error,
-         "presets": PRESETS, "source_types": models.SourceType.LABELS, "subjects": _subject_names(db),
+         "presets": PRESETS, "source_types": models.SourceType.PAPER_LABELS, "subjects": _subject_names(db),
          "flags": ingest.FLAG_LABELS, "flags_for": json_import.flags_for,
          "counts": _counts(report), "flash": request.session.pop("flash", None),
          "error_groups": error_groups, "loose_errors": loose_errors,
@@ -292,7 +294,7 @@ def apply_import(
             year_value = int(year) if year.strip() else None
         except ValueError:
             return refuse("Check the paper type and the year.", report)
-        if source_type and source_type not in models.SourceType.ALL:
+        if source_type and source_type not in models.SourceType.PAPER_TYPES:
             return refuse("Choose Official PYQ or Coaching test as the source.", report)
         if not allow_duplicate:
             same_file = db.query(models.Paper).filter(models.Paper.file_hash == digest).first()

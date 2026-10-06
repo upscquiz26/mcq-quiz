@@ -128,7 +128,7 @@ def _page(request: Request, db: Session, token: str, meta: dict, ctx: dict, form
     return templates.TemplateResponse(
         "file_report.html",
         {"request": request, "token": token, "meta": meta, "paper": paper, "form": defaults, "error": error, "presets": PRESETS,
-         "source_types": models.SourceType.LABELS, "fields": file_import.FIELDS, "sample": SAMPLE_QUESTIONS, "preview_rows": PREVIEW_ROWS,
+         "source_types": models.SourceType.PAPER_LABELS, "fields": file_import.FIELDS, "sample": SAMPLE_QUESTIONS, "preview_rows": PREVIEW_ROWS,
          "shown_problems": file_import.SHOWN_PROBLEMS, "flash": request.session.pop("flash", None), **ctx},
         status_code=status_code,
     )
@@ -228,7 +228,7 @@ async def apply(request: Request, background_tasks: BackgroundTasks, db: Session
             year_value = int(g("year")) if g("year") else None
         except ValueError as e:
             return refuse(str(e) if str(e) else "Check the paper type, the year and the marking scheme.", ctx)
-        if g("source_type") and g("source_type") not in models.SourceType.ALL:
+        if g("source_type") and g("source_type") not in models.SourceType.PAPER_TYPES:
             return refuse("Choose Official PYQ or Coaching test as the source.", ctx)
         digest = "file:" + hashlib.sha256("".join(meta["sha256"]).encode()).hexdigest()
         if not allow_duplicate:

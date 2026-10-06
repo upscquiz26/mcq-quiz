@@ -29,6 +29,8 @@
           <p class="empty-state">This question is no longer available.</p>
 
         {% else %}
+          {% set book_ref = book_source_ref(question) %}
+          {% if book_ref %}<p class="paper-meta">{{ book_ref.chapter }} · printed Q{{ book_ref.chapter_question_number }}{% if book_ref.page %} · page {{ book_ref.page }}{% endif %}</p>{% endif %}
           {{ question_text(question) }}
 
           {% if question.has_image and question.source_image_path %}

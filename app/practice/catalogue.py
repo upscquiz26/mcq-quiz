@@ -2,9 +2,16 @@
 from sqlalchemy import func
 
 from app import models
-from app.models import AttemptStatus
+from app.models import AttemptKind, AttemptStatus
 from app.practice import attempts as engine
 from app.practice import pool
+
+
+def _fraction_input(value: float) -> str:
+    for fraction, label in ((0.0, "0"), (0.25, "1/4"), (1 / 3, "1/3"), (0.5, "1/2"), (1.0, "1")):
+        if abs(value - fraction) < 0.000001:
+            return label
+    return f"{value:.6g}"
 
 
 def _history(db, user_id: int, rank_keys: list[str]) -> dict:
@@ -33,18 +40,32 @@ def full_tests(db, user_id: int) -> list[dict]:
     if not counts:
         return []
     papers = db.query(models.Paper).filter(models.Paper.id.in_(counts)).order_by(models.Paper.created_at.desc()).all()
+    papers = [paper for paper in papers if paper.source_type != models.SourceType.BOOK]
     entries = []
     for paper in papers:
         ids = engine.paper_live_ids(db, paper.id)
         entries.append({
             "paper": paper, "count": counts[paper.id],
             "rank_key": f"paper:{paper.id}:full:{engine.question_set_fingerprint(ids)}",
-            "minutes": engine.full_test_duration_seconds(paper, len(ids)) // 60,
+            "minutes": engine.full_test_duration_minutes(paper, len(ids)),
+            "marks_default": paper.marks_per_question or engine.DEFAULT_MARKS,
+            "negative_default": _fraction_input(paper.negative_fraction if paper.negative_fraction is not None
+                                                 else engine.DEFAULT_NEGATIVE),
             "scheme_ready": bool(paper.marks_per_question) and paper.negative_fraction is not None,
         })
     history = _history(db, user_id, [e["rank_key"] for e in entries])
+    open_rows = (db.query(models.Attempt.paper_id, models.Attempt.id, models.Attempt.kind)
+                 .filter(models.Attempt.user_id == user_id, models.Attempt.paper_id.in_(list(counts)),
+                         models.Attempt.kind.in_((AttemptKind.FULL, AttemptKind.PAPER_PRACTICE)),
+                         models.Attempt.status == AttemptStatus.IN_PROGRESS)
+                 .order_by(models.Attempt.id.desc()).all())
+    open_by_paper = {AttemptKind.FULL: {}, AttemptKind.PAPER_PRACTICE: {}}
+    for paper_id, attempt_id, kind in open_rows:
+        open_by_paper[kind].setdefault(paper_id, attempt_id)
     for e in entries:
         e.update(history.get(e["rank_key"], {"taken": 0, "open_id": None}))
+        e["open_id"] = open_by_paper[AttemptKind.FULL].get(e["paper"].id, e["open_id"])
+        e["practice_open_id"] = open_by_paper[AttemptKind.PAPER_PRACTICE].get(e["paper"].id)
     return entries
 
 
@@ -53,6 +74,7 @@ def sections(db, user_id: int) -> list[dict]:
     rows = (
         pool.live_questions(db)
         .join(models.Subject, models.Subject.id == models.Question.subject_id)
+        .filter(models.Paper.source_type != models.SourceType.BOOK)
         .with_entities(models.Paper.id, models.Paper.title, models.Subject.id, models.Subject.name,
                        func.count(models.Question.id))
         .group_by(models.Paper.id, models.Paper.title, models.Subject.id, models.Subject.name)

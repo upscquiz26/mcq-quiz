@@ -20,7 +20,7 @@ from sqlalchemy import func, or_
 from app import models
 from app.models import QStatus
 
-ANSWER_LETTERS = ("A", "B", "C", "D")
+ANSWER_LETTERS = ("A", "B", "C", "D", "E")
 DIFFICULTIES = ("easy", "medium", "hard", "tricky")
 
 

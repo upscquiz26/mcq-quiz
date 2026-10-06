@@ -30,7 +30,8 @@
       {% set shown = primary(q) %}
       <p class="q-text" {% if shown[0] == "hi" %}lang="hi"{% endif %}>{{ shown[1]|truncate(240) }}</p>
       <ul class="paper-list">
-        {% for letter, text in [("A", shown[2][0]), ("B", shown[2][1]), ("C", shown[2][2]), ("D", shown[2][3])] %}
+        {% for text in shown[2] %}
+          {% set letter = "ABCDE"[loop.index0] %}
           <li>{% if letter == q.correct_answer %}<strong>{{ letter }}. {{ text }} — marked correct</strong>{% else %}{{ letter }}. {{ text }}{% endif %}</li>
         {% endfor %}
       </ul>

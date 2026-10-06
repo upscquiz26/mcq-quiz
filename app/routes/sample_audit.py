@@ -79,4 +79,5 @@ def audit_check(request: Request, paper_id: int, question_id: int, verdict: str 
                            f"{outcome['sent_back']} question{'s' if outcome['sent_back'] != 1 else ''} confirmed without an edit "
                            "went back to review for a second pass.")
     db.commit()
-    return RedirectResponse(url=f"/review/{paper_id}/audit" if outcome is None else f"/review/{paper_id}", status_code=303)
+    target = f"/review/{paper_id}/audit#q{q.question_number}" if outcome is None else f"/review/{paper_id}"
+    return RedirectResponse(url=target, status_code=303)

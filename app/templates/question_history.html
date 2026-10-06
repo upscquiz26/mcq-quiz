@@ -16,7 +16,7 @@
     <div class="q-num">Current</div>
     <p>{{ q.text }}</p>
     <ol type="a" class="version-options">
-      <li>{{ q.option_a }}</li><li>{{ q.option_b }}</li><li>{{ q.option_c }}</li><li>{{ q.option_d }}</li>
+      <li>{{ q.option_a }}</li><li>{{ q.option_b }}</li><li>{{ q.option_c }}</li><li>{{ q.option_d }}</li>{% if q.option_e %}<li>{{ q.option_e }}</li>{% endif %}
     </ol>
     <p class="paper-meta">Answer: {{ q.correct_answer or "—" }} · Status: {{ q.status }}</p>
   </div>
@@ -30,7 +30,7 @@
       <p>{{ row.snapshot.text }}</p>
       <ol type="a" class="version-options">
         <li>{{ row.snapshot.option_a }}</li><li>{{ row.snapshot.option_b }}</li>
-        <li>{{ row.snapshot.option_c }}</li><li>{{ row.snapshot.option_d }}</li>
+        <li>{{ row.snapshot.option_c }}</li><li>{{ row.snapshot.option_d }}</li>{% if row.snapshot.option_e %}<li>{{ row.snapshot.option_e }}</li>{% endif %}
       </ol>
       <p class="paper-meta">Answer: {{ row.snapshot.correct_answer or "—" }}</p>
       {% if row.differs %}

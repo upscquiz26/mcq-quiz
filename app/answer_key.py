@@ -16,7 +16,7 @@ import re
 import pdfplumber
 
 # "12. Ans– (c)" — tolerate hyphen/en dash/colon and missing brackets.
-ANSWER_LINE = re.compile(r"^\s*(\d{1,3})\s*[.)]\s*Ans\w*\s*[–—\-:]*\s*\(?\s*([a-dA-D])\s*\)?", re.M)
+ANSWER_LINE = re.compile(r"^\s*(\d{1,3})\s*[.)]\s*Ans\w*\s*[–—\-:]*\s*\(?\s*([a-eA-E])\s*\)?", re.M)
 PAGE_FOOTER = re.compile(r"^\s*(SERIES\s*:|Page\s+No\.?\s*\d+).*$", re.I)
 
 

@@ -387,7 +387,7 @@ def test_the_review_page_shows_flags_from_the_text_reader(admin, db, no_tesserac
     admin.post("/upload", data=form("Text flags paper"), files=pdf_files(make_pdf([items])))
     paper = paper_named(db, "Text flags paper")
     page = admin.get(f"/review/{paper.id}").text
-    assert "No answer was printed under this question" in page
+    assert "No answer supplied or found" in page
     assert questions_of(db, paper)[2].correct_answer is None and questions_of(db, paper)[1].correct_answer == "A"
 
 

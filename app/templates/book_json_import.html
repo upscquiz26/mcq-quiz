@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Import book JSON{% endblock %}
+{% block content %}
+  <p class="crumbs"><a href="/">← Papers</a></p>
+  <div class="page-head">
+    <div>
+      <h1>Import a book from JSON</h1>
+      <p class="page-sub">Upload chapter files together. Nothing is saved until you review the validation report and confirm the import.</p>
+    </div>
+  </div>
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  {% if flash %}<div class="{{ 'notice' if flash.kind == 'notice' else 'error' }}">{{ flash.message }}</div>{% endif %}
+
+  <form method="post" action="/admin/books/import/json/validate" enctype="multipart/form-data" class="form-card">
+    <div class="row wrap">
+      <div>
+        <label for="book-title">Book title</label>
+        <input id="book-title" name="title" required placeholder="e.g. Ghatna Chakra General Science">
+      </div>
+      <div>
+        <label for="book-subject">Subject</label>
+        <input id="book-subject" name="subject" required value="Physics" placeholder="e.g. Physics">
+      </div>
+    </div>
+    <div>
+      <label for="chapter-files">Chapter JSON files</label>
+      <input id="chapter-files" type="file" name="files" accept=".json,application/json" multiple required>
+      <p class="paper-meta">Select the individual chapter files together. Do not select the aggregate ALL file or the report/script files.</p>
+    </div>
+    <button type="submit">Validate chapter files</button>
+  </form>
+{% endblock %}

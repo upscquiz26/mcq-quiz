@@ -64,8 +64,11 @@ class QStatus:
 class SourceType:
     OFFICIAL_PYQ = "official_pyq"
     COACHING_TEST = "coaching_test"
-    ALL = (OFFICIAL_PYQ, COACHING_TEST)
-    LABELS = {OFFICIAL_PYQ: "Official PYQ", COACHING_TEST: "Coaching test"}
+    BOOK = "book"
+    ALL = (OFFICIAL_PYQ, COACHING_TEST, BOOK)
+    PAPER_TYPES = (OFFICIAL_PYQ, COACHING_TEST)
+    LABELS = {OFFICIAL_PYQ: "Official PYQ", COACHING_TEST: "Coaching test", BOOK: "Book"}
+    PAPER_LABELS = {OFFICIAL_PYQ: "Official PYQ", COACHING_TEST: "Coaching test"}
 
 
 class UserStatus(str, enum.Enum):
@@ -222,7 +225,9 @@ class Question(Base):
     option_b = Column(Text, nullable=False)
     option_c = Column(Text, nullable=False)
     option_d = Column(Text, nullable=False)
-    correct_answer = Column(String, nullable=True)  # "A" / "B" / "C" / "D", filled during review
+    option_e = Column(Text, nullable=True)           # books may have a fifth MCQ option
+    correct_answer = Column(String, nullable=True)  # "A"–"E", filled during review
+    source_ref = Column(Text, nullable=True)          # source book/chapter/local number/citations as JSON
 
     subject_id = Column(Integer, ForeignKey("subjects.id"), nullable=True)
     topic_id = Column(Integer, ForeignKey("topics.id"), nullable=True)
@@ -310,10 +315,11 @@ class AttemptKind:
     SECTIONAL = "sectional"    # timed, one subject
     FULL = "full"              # timed, a whole paper
     MISTAKE = "mistake"        # untimed, questions the user got wrong or guessed
-    ALL = (TOPIC, SECTIONAL, FULL, MISTAKE)
+    PAPER_PRACTICE = "paper_practice"  # untimed, immediate feedback on a whole paper
+    ALL = (TOPIC, SECTIONAL, FULL, MISTAKE, PAPER_PRACTICE)
     TIMED = (SECTIONAL, FULL)
     LABELS = {TOPIC: "Topic practice", SECTIONAL: "Sectional test", FULL: "Full-length test",
-              MISTAKE: "Mistake practice"}
+              MISTAKE: "Mistake practice", PAPER_PRACTICE: "Full-paper practice"}
 
 
 class AttemptStatus:

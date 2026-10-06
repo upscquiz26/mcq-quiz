@@ -3,6 +3,8 @@
 The question screen and results are in routes/practice.py (shared with topic practice). Everything is
 open to any signed-in user, and every attempt is checked to belong to the person asking."""
 from datetime import datetime
+from fractions import Fraction
+import math
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -27,13 +29,16 @@ def tests_page(request: Request, db: Session = Depends(get_db)):
     sections_by_paper: dict = {}
     for entry in catalogue.sections(db, user.id):
         sections_by_paper.setdefault((entry["paper_id"], entry["paper"]), []).append(entry)
+    custom_options = pool.filter_options(db)
+    custom_options["sources"] = [source for source in custom_options["sources"]
+                                 if source["value"] != models.SourceType.BOOK]
     return templates.TemplateResponse(
         "tests.html",
         {
             "request": request,
             "full_tests": catalogue.full_tests(db, user.id),
             "sections_by_paper": sections_by_paper,
-            "options": pool.filter_options(db),
+            "options": custom_options,
             "count_choices": CUSTOM_COUNT_CHOICES,
             "seconds_per_question": engine.SECONDS_PER_QUESTION,
             "flash": request.session.pop("flash", None),
@@ -48,10 +53,41 @@ def _int(value: str, label: str) -> int:
         raise ValueError(f"Please choose a valid {label}.")
 
 
+def _optional_int(value: str, label: str) -> int | None:
+    return _int(value, label) if (value or "").strip() else None
+
+
+def _optional_marks(value: str) -> float | None:
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        marks = float(value)
+    except ValueError:
+        raise ValueError("Marks per question must be a positive number.")
+    if not math.isfinite(marks) or marks <= 0:
+        raise ValueError("Marks per question must be a positive number.")
+    return marks
+
+
+def _optional_negative_fraction(value: str) -> float | None:
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        fraction = float(Fraction(value))
+    except (ValueError, ZeroDivisionError, OverflowError):
+        raise ValueError("Negative marking must be 0 or a fraction from 0 to 1, such as 1/3.")
+    if not math.isfinite(fraction) or not 0 <= fraction <= 1:
+        raise ValueError("Negative marking must be 0 or a fraction from 0 to 1, such as 1/3.")
+    return fraction
+
+
 @router.post("/tests/start")
 def start_test(
     request: Request,
     mode: str = Form(""), paper_id: str = Form(""), subject_id: str = Form(""),
+    duration_minutes: str = Form(""), marks_per_question: str = Form(""), negative_fraction: str = Form(""),
     source_type: str = Form(""), year: str = Form(""), topic_id: str = Form(""), difficulty: str = Form(""),
     unattempted: str = Form(""), count: str = Form("20"),
     db: Session = Depends(get_db),
@@ -59,7 +95,12 @@ def start_test(
     user = request.state.user
     try:
         if mode == "full":
-            attempt, resumed = engine.start_full_test(db, user, _int(paper_id, "test"))
+            attempt, resumed = engine.start_full_test(
+                db, user, _int(paper_id, "test"), duration_minutes=_optional_int(duration_minutes, "time limit"),
+                marks_per_question=_optional_marks(marks_per_question),
+                negative_fraction=_optional_negative_fraction(negative_fraction))
+        elif mode == "full_practice":
+            attempt, resumed = engine.start_full_paper_practice(db, user, _int(paper_id, "paper"))
         elif mode == "section":
             attempt, resumed = engine.start_section_test(db, user, _int(paper_id, "test"), _int(subject_id, "subject"))
         elif mode == "custom":
@@ -74,8 +115,9 @@ def start_test(
 
     db.commit()
     if resumed:
-        flash(request, "You already have this test open, so you're carrying on where you left off. "
-                       "The clock kept running.", "notice")
+        message = ("You already have this test open, so you're carrying on where you left off. The clock kept running."
+                   if engine.is_timed(attempt) else "You already have this practice open, so you're carrying on where you left off.")
+        flash(request, message, "notice")
     return RedirectResponse(url=f"/attempts/{attempt.id}", status_code=303)
 
 

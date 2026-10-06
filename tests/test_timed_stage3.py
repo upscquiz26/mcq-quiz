@@ -86,20 +86,25 @@ def test_the_tests_page_lists_only_what_can_be_started(db, make_paper, make_user
 
     page = student.get("/tests")
     assert page.status_code == 200
-    assert "Catalogue ready paper" in page.text and "4 questions · 45 minutes" in page.text
+    assert "Catalogue ready paper" in page.text and "4 questions · suggested 45 minutes" in page.text
     assert "2 marks each" in page.text and "−0.67 for a wrong answer" in page.text
     assert 'name="mode" value="full"' in page.text and 'value="' + str(ready.id) + '"' in page.text
-    assert "Catalogue unset paper" in page.text and "the marking scheme hasn't been set" in page.text
+    assert "Catalogue unset paper" in page.text and "choose scoring for each timed sitting" in page.text
+    unset_block = page.text.split("Catalogue unset paper")[1].split("</li>")[0]
+    assert 'name="mode" value="full"' in unset_block and 'name="mode" value="full_practice"' in unset_block
+    assert "This paper has no standard scoring scheme" in unset_block
     assert "Catalogue draft paper" not in page.text
     assert "Custom timed test" in page.text and "never ranked" in page.text
     assert "History" in page.text                                                            # a section is offered
 
 
-def test_full_length_start_buttons_are_absent_for_papers_without_a_scheme(db, make_paper, make_user):
+def test_full_length_options_are_available_without_an_admin_scheme(db, make_paper, make_user):
     unset = timed_paper(db, make_paper, "No start button paper", n=2, marks=None, negative=None)
     page = make_user("nostartstudent").get("/tests").text
     block = page.split("No start button paper")[1].split("</li>")[0]
-    assert "<form" not in block and "hasn't been set" in block
+    assert 'name="mode" value="full"' in block
+    assert 'name="mode" value="full_practice"' in block
+    assert 'name="marks_per_question"' in block and 'name="negative_fraction"' in block
 
 
 # --------------------------------------------------------------------------- starting a full-length test
@@ -130,20 +135,65 @@ def test_without_a_stated_duration_a_test_gets_72_seconds_a_question(db, make_pa
 
 
 @pytest.mark.parametrize("marks,negative", [(None, None), (2.0, None), (None, 1 / 3)])
-def test_full_length_needs_the_papers_real_marking_scheme(db, make_paper, make_user, marks, negative):
+def test_full_length_uses_student_defaults_when_paper_scheme_is_missing(db, make_paper, make_user, marks, negative):
     paper = timed_paper(db, make_paper, f"Unset scheme {marks} {negative}", n=2, marks=marks, negative=negative)
     student = make_user("schemerefusedstudent")
-    before = db.query(models.Attempt).filter_by(user_id=user_id(db, "schemerefusedstudent")).count()
-    r = start_full(student, paper)
-    assert r.status_code == 303 and r.headers["location"] == "/tests"
-    assert "marking scheme" in student.get("/tests").text
-    db.rollback()
-    assert db.query(models.Attempt).filter_by(user_id=user_id(db, "schemerefusedstudent")).count() == before
+    attempt = attempt_of(db, start_full(student, paper))
+    assert attempt.kind == AttemptKind.FULL and attempt.rank_key is None and not attempt.counts_for_rank
+    assert all(r.marks_if_correct == engine.DEFAULT_MARKS for r in attempt.responses)
+    assert all(r.penalty_if_wrong == pytest.approx(engine.DEFAULT_MARKS * engine.DEFAULT_NEGATIVE)
+               for r in attempt.responses)
 
 
 def test_a_zero_negative_scheme_counts_as_set(db, make_paper, make_user):
     paper = timed_paper(db, make_paper, "Zero negative timed", n=2, marks=1.0, negative=0.0)
     assert attempt_of(db, start_full(make_user("zeronegtimed"), paper)).kind == AttemptKind.FULL
+
+
+def test_student_selected_time_and_scoring_are_saved_and_not_ranked(db, make_paper, make_user):
+    paper = timed_paper(db, make_paper, "Student settings paper", n=3, marks=2.0, negative=1 / 3, duration_minutes=30)
+    student = make_user("studentsettings")
+    response = student.post("/tests/start", data={
+        "mode": "full", "paper_id": str(paper.id), "duration_minutes": "90",
+        "marks_per_question": "4", "negative_fraction": "1/2",
+    })
+    attempt = attempt_of(db, response)
+    assert attempt.deadline_at - attempt.started_at == timedelta(minutes=90)
+    assert attempt.time_limit_minutes == 90 and attempt.negative_marking is True
+    assert attempt.rank_key is None and not attempt.counts_for_rank
+    assert all(r.marks_if_correct == 4 and r.penalty_if_wrong == 2 for r in attempt.responses)
+    assert "Resume timed test" in student.get("/tests").text
+
+
+def test_student_can_start_timed_full_test_without_admin_scheme(db, make_paper, make_user):
+    paper = timed_paper(db, make_paper, "Student configured paper", n=3,
+                        marks=None, negative=None, duration_minutes=None)
+    student = make_user("selfconfiguredtimed")
+    response = student.post("/tests/start", data={
+        "mode": "full", "paper_id": str(paper.id), "duration_minutes": "75",
+        "marks_per_question": "3", "negative_fraction": "0",
+    })
+    attempt = attempt_of(db, response)
+    assert attempt.kind == AttemptKind.FULL and engine.is_timed(attempt)
+    assert attempt.time_limit_minutes == 75 and attempt.deadline_at - attempt.started_at == timedelta(minutes=75)
+    assert attempt.negative_marking is False
+    assert all(r.marks_if_correct == 3 and r.penalty_if_wrong == 0 for r in attempt.responses)
+    assert attempt.rank_key is None and not attempt.counts_for_rank
+
+
+def test_full_paper_practice_is_untimed_and_has_no_negative_penalty(db, make_paper, make_user):
+    paper = timed_paper(db, make_paper, "Practice full paper", n=4, marks=None, negative=None, duration_minutes=None)
+    student = make_user("fullpaperpractice")
+    response = student.post("/tests/start", data={"mode": "full_practice", "paper_id": str(paper.id)})
+    attempt = attempt_of(db, response)
+    assert attempt.kind == AttemptKind.PAPER_PRACTICE and not engine.is_timed(attempt)
+    assert attempt.deadline_at is None and attempt.rank_key is None
+    assert all(r.marks_if_correct == 1 and r.penalty_if_wrong == 0 for r in attempt.responses)
+    first = attempt.responses[0]
+    correct = db.get(models.Question, first.question_id).correct_answer
+    student.post(f"/attempts/{attempt.id}/q/1/answer", data={"answer": correct, "confidence": "sure"})
+    db.refresh(first)
+    assert first.is_correct is True and first.marks_awarded == 1
 
 
 def test_starting_the_same_ranked_test_twice_resumes_the_open_one(db, make_paper, make_user):

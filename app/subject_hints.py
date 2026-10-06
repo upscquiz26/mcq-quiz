@@ -82,7 +82,7 @@ def suggest(text: str) -> tuple[str, int] | None:
 
 
 def question_text(q: models.Question) -> str:
-    return " ".join(part for part in (q.text, q.option_a, q.option_b, q.option_c, q.option_d) if part)
+    return " ".join(part for part in (q.text, q.option_a, q.option_b, q.option_c, q.option_d, q.option_e) if part)
 
 
 def suggest_for_paper(db, paper_id: int, redo: bool = False) -> int:

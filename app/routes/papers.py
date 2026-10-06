@@ -109,7 +109,7 @@ def _student_home(request: Request, db: Session):
         {
             "request": request,
             "unfinished": unfinished,
-            "due_today": revision.due_count(db, request.state.user.id),
+            "due_now": revision.due_count(db, request.state.user.id),
             "daily": activity.summary(db, db.get(models.User, request.state.user.id)),
             "recent_tests": analytics.recent_tests(db, request.state.user.id, 5),
             "weak": analytics.weak_areas(db, request.state.user.id),
@@ -136,7 +136,7 @@ def _upload_page(request: Request, db: Session, error: str | None = None, form: 
             "request": request, "error": error, "form": form or {},
             "subjects": _subject_names(db), "presets": PRESETS,
             "subject_templates": [(t.id, subject_templates.label(t), t.ranges_text) for t in subject_templates.all_templates(db)],
-            "source_types": models.SourceType.LABELS, "layouts": text_extract.LAYOUTS,
+            "source_types": models.SourceType.PAPER_LABELS, "layouts": text_extract.LAYOUTS,
         },
         status_code=status_code,
     )
@@ -231,7 +231,7 @@ def upload_pdf(
         exam_type_value = models.ExamType(exam_type)
     except ValueError:
         return fail("Invalid paper type.")
-    if source_type and source_type not in models.SourceType.ALL:
+    if source_type and source_type not in models.SourceType.PAPER_TYPES:
         return fail("Choose Official PYQ or Coaching test as the source.")
     try:
         scheme = _parse_scheme(expected_total, marks_per_question, negative_fraction, duration_minutes)
